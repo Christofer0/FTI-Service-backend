@@ -1,0 +1,6 @@
+.env
+venv/
+**/permohonan_ttd/*
+**/permohonan/*
+**/qr_codes/*
+**/signatures/*

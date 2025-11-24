@@ -1,0 +1,54 @@
+# ======================
+# 🌐 Core Flask Framework
+# ======================
+Flask==3.0.0
+flask-cors==4.0.0
+Werkzeug==3.0.1
+Flask-Mail==0.9.1
+
+
+# ======================
+# 🗃️ Database & Migration
+# ======================
+flask-sqlalchemy==3.1.1
+flask-migrate==4.0.5
+alembic==1.13.0
+psycopg2-binary==2.9.9
+
+# ======================
+# 🔐 Authentication & Security
+# ======================
+flask-jwt-extended==4.6.0
+bcrypt==4.1.2
+python-decouple==3.8
+
+# ======================
+# 🔑 Google OAuth Support
+# ======================
+requests==2.31.0
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+
+# ======================
+# 🧾 Serialization & Validation
+# ======================
+marshmallow==3.20.1
+flask-marshmallow==0.15.0
+marshmallow-sqlalchemy==0.29.0
+
+# ======================
+# 🧰 Utilities & Extra Features
+# ======================
+python-dotenv==1.0.1
+qrcode[pil]==7.4.2
+Pillow==10.0.1
+PyPDF2==3.0.1
+reportlab==4.0.4
+
+
+#Schedular
+APScheduler==3.10.4
+pytz==2024.1
+
+gunicorn==22.0.0
