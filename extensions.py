@@ -23,7 +23,7 @@ def init_extensions(app):
     mail.init_app(app)
     cors.init_app(
         app,
-        resources={r"/api/*": {"origins": ["http://localhost:5173","http://192.168.68.62:5173","http://192.168.1.3:5173"]}},
+        resources={r"/api/*": {"origins": ["https://fti-service.netlify.app","http://192.168.68.62:5173","http://192.168.1.3:5173"]}},
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
