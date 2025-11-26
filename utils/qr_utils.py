@@ -113,7 +113,7 @@ def generate_qr_code(data, permohonan_id):
     """Generate QR code with verification URL and signature"""
     try:
         # Get base URL from config
-        frontend_url = current_app.config.get('FRONTEND_URL', 'http://localhost:5173')
+        frontend_url = current_app.config.get('FRONTEND_URL', 'https://fti-service.netlify.app')
         
         # Create verification URL
         verify_url = f"{frontend_url}/verify-document/{permohonan_id}"

@@ -37,7 +37,7 @@ class Config:
     DOCUMENT_PERMOHONAN_TTD_PATH = config('DOCUMENT_PERMOHONAN_TTD_PATH', default='storage/signed/permohonan_ttd')
     MAX_CONTENT_LENGTH = int(config('MAX_CONTENT_LENGTH', default=16777216))  # 16MB
     ALLOWED_EXTENSIONS = set(config('ALLOWED_EXTENSIONS', default='pdf,doc,docx,jpg,jpeg,png').split(','))
-    FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+    FRONTEND_URL = config('FRONTEND_URL', default='https://fti-service.netlify.app')
 
     # Admin Email untuk maintenance report
     ADMIN_EMAIL = config('ADMIN_EMAIL', default='brilliancw06@gmail.com')

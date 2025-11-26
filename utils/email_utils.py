@@ -69,7 +69,7 @@ def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_pe
                 </p>
 
                 <div style="text-align:center; margin-top:30px;">
-                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/mahasiswa/history"
+                    <a href="{os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')}/mahasiswa/history"
                        style="background:#3b82f6; color:white; padding:14px 32px; text-decoration:none; border-radius:8px; font-weight:600;">
                         Buka Aplikasi
                     </a>
@@ -169,7 +169,7 @@ def send_batch_permohonan_email(to_email: str, mahasiswa_name: str, dosen_name: 
                 </div>
                 
                 <div style="text-align: center; margin-top: 30px;">
-                    <a href="{os.getenv('FRONTEND_URL', 'http://localhost:5173')}/mahasiswa/history" 
+                    <a href="{os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')}/mahasiswa/history" 
                        style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">
                         Lihat History Permohonan Saya
                     </a>

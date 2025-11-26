@@ -15,7 +15,7 @@ google_auth_bp = Blueprint('google_auth', __name__)
 google_oauth_service = GoogleOAuthService()
 user_schema = UserSchema()
 
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')
 
 
 # Validation Schemas

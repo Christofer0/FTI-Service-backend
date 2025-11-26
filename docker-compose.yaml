@@ -15,6 +15,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     restart: always
+    volumes:
+      - storage_data:/app/storage
 
   db:
     image: postgres:15
@@ -30,3 +32,4 @@ services:
 
 volumes:
   postgres_data:
+  storage_data:
