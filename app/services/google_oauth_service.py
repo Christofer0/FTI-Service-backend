@@ -49,9 +49,9 @@ class GoogleOAuthService:
         Determine role based on email domain
         Returns: (role, nomor_induk, prodi_id, error)
         """
-        # jangan lupa buka
-        if not email.endswith('@uksw.edu') and not email.endswith('@student.uksw.edu'):
-            return None, None, None, "Email harus menggunakan domain @uksw.edu atau @student.uksw.edu"
+        # jangan_lupa_buka
+        # if not email.endswith('@uksw.edu') and not email.endswith('@student.uksw.edu'):
+        #     return None, None, None, "Email harus menggunakan domain @uksw.edu atau @student.uksw.edu"
         
         # Check if this is the first user (will be admin)
         user_count = self.user_repo.get_user_count()
@@ -84,7 +84,8 @@ class GoogleOAuthService:
         # Dosen: email format jefry@uksw.edu
         # JANGAN LUPA GANTI INI YA !!!!!!!!
         # elif '@uksw.edu' in email:
-        elif '@gmail.com' in email:
+        # jangan_lupa_buka
+        elif '@gmail.com' in email or '@uksw.edu' in email:
             return 'dosen', None, None, None
         
         return None, None, None, "Format email tidak valid"
@@ -241,9 +242,10 @@ class GoogleOAuthService:
         email = google_data['email']
         name = google_data['name']
 
+        #jangan_lupa_buka
         # Validate email domain
-        if not email.endswith('@uksw.edu'):
-            return None, "Email admin harus menggunakan domain @uksw.edu"
+        # if not email.endswith('@uksw.edu'):
+        #     return None, "Email admin harus menggunakan domain @uksw.edu"
         
         # Check if user already exists
         existing_user = self.user_repo.get_by_email(email)
@@ -309,9 +311,10 @@ class GoogleOAuthService:
         email = google_data['email']
         name = google_data['name']
         
+        # jangan_lupa_buka
         # Validate email domain
-        if not email.endswith('@uksw.edu'):  
-            return None, "Email dosen harus menggunakan domain @uksw.edu"
+        # if not email.endswith('@uksw.edu'):  
+        #     return None, "Email dosen harus menggunakan domain @uksw.edu"
         
         # Check if user already exists
         existing_user = self.user_repo.get_by_email(email)
