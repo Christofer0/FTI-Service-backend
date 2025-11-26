@@ -31,5 +31,8 @@ def init_extensions(app):
     from utils.scheduler_utils import start_scheduler
     start_scheduler(app)
 
+    from utils.maintenance_utils import start_maintenance_scheduler
+    start_maintenance_scheduler(app)
+
 
         

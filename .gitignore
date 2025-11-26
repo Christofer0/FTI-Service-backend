@@ -4,3 +4,4 @@ venv/
 **/permohonan/*
 **/qr_codes/*
 **/signatures/*
+logs/

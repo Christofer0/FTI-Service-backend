@@ -240,13 +240,10 @@ class GoogleOAuthService:
         """
         email = google_data['email']
         name = google_data['name']
-        # ===========================
-        #           PENTING
-        # ===========================
+
         # Validate email domain
-        # JANGAN LUPA DIBUKA
-        # if not email.endswith('@uksw.edu'):
-        #     return None, "Email admin harus menggunakan domain @uksw.edu"
+        if not email.endswith('@uksw.edu'):
+            return None, "Email admin harus menggunakan domain @uksw.edu"
         
         # Check if user already exists
         existing_user = self.user_repo.get_by_email(email)
@@ -294,85 +291,6 @@ class GoogleOAuthService:
             return None, f"Gagal membuat akun: {str(e)}"
         
 
-    # def create_dosen_from_google(self, google_data: dict, nomor_induk: str,no_hp:str, gelar_depan: str, gelar_belakang:str, jabatan:str, fakultas_id:int, signature_file:None ) -> tuple:
-    #     """
-    #     Create new admin user from Google data
-    #     Returns: (result_dict, error)
-    #     """
-    #     email = google_data['email']
-    #     name = google_data['name']
-        
-    #     #jangna lupa dibuka
-    #     # if not email.endswith('@uksw.edu'):
-    #     #     return None, "Email harus menggunakan domain @uksw.edu"
-        
-    #     #Check User
-    #     existing_user = self.user_repo.get_by_email(email)
-    #     if existing_user:
-    #         return None, "Email sudah terdaftar"
-        
-    #     #Check if nomor_induk ada
-    #     existing_nomor_induk = self.user_repo.get_by_nomor_induk(nomor_induk)
-    #     if existing_nomor_induk:
-    #         return None, "Nomor Induk sudah ada"
-        
-    #     try:
-    #         # buka jika ingin menambhaknan random password
-    #         # import secrets
-    #         # from utils.password_utils import hash_password
-
-    #         ttd_path = None
-    #         if signature_file:
-    #             from utils.file_utils import save_and_resize_signature
-    #             ttd_path, error = save_and_resize_signature(signature_file, targer_size = (724,344))
-
-    #             if error:
-    #                 return None, f"Gagal mengupload tanda tangan : {error}"
-                        
-    #         user_data = {
-    #             'nomor_induk': nomor_induk,
-    #             # 'password':hash_password(secrets.token_urlsafe(32)),
-    #             'password':'',
-    #             'nama' : name,
-    #             'email':email,
-    #             'role': 'dosen',
-    #             'is_active': True,
-    #             'no_hp': no_hp,
-    #         }
-
-    #         # create data
-    #         user = self.user_repo.create(**user_data)
-
-    #         #Create dosen record
-    #         dosen_data = {
-    #             'user_id': user.id,
-    #             'fakultas_id': 1,
-    #             'gelar_depan':gelar_depan if gelar_depan else None,
-    #             'gelar_belakang':gelar_belakang if gelar_belakang else None,
-    #             'jabatan':jabatan if jabatan else None,
-    #             'ttd_path':ttd_path,
-    #             'signature_upload_at':datetime.utcnow() if ttd_path else None
-    #         }
-            
-    #         dosen = self.dosen_repo.create(**dosen_data)
-
-    #         #Update last_login
-    #         self.user_repo.update_last_login(user.id)
-
-    #         # TOKEN
-    #         access_token = create_access_token(identity=str(user.id))
-    #         refresh_token = create_refresh_token(identity=str(user.id))
-
-    #         return {
-    #             'access_token': access_token,
-    #             'refresh_token':refresh_token,
-    #             'user':user,
-    #             'dosen':dosen
-    #         }, None
-        
-    #     except Exception as e:
-    #         return None, f"Gagal membuat akun dosen : {str(e)}" 
-
     def create_dosen_from_google(
     self, 
     google_data: dict, 
@@ -392,9 +310,8 @@ class GoogleOAuthService:
         name = google_data['name']
         
         # Validate email domain
-        # JANGAN LUPA BUKA ini
-        # if not email.endswith('@uksw.edu'):  
-        #     return None, "Email dosen harus menggunakan domain @uksw.edu"
+        if not email.endswith('@uksw.edu'):  
+            return None, "Email dosen harus menggunakan domain @uksw.edu"
         
         # Check if user already exists
         existing_user = self.user_repo.get_by_email(email)
@@ -410,22 +327,10 @@ class GoogleOAuthService:
             # from utils.security_utils import hash_password
             # import secrets
             
-            # Process signature upload if provided
-            # ttd_path = None
-            # if signature_file:
-            #     from utils.file_utils import save_and_resize_signature
-            #     ttd_path, error = save_and_resize_signature(signature_file, target_size=(724, 344))
-            #     if error:
-            #         return None, f"Gagal upload tanda tangan: {error}"
             ttd_path = None
             if signature_file:
-            # ✅ OPTION A: Save direct (jika dari editor frontend)
                 from utils.file_utils import save_signature_direct
                 ttd_path, error = save_signature_direct(signature_file)
-            
-            # ✅ OPTION B: Resize (jika upload manual tanpa editor)
-                # from utils.file_utils import save_and_resize_signature
-                # ttd_path, error = save_and_resize_signature(signature_file, target_size=(724, 344))
             
             if error:
                 return None, f"Gagal upload tanda tangan: {error}"

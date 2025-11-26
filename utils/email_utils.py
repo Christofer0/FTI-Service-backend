@@ -126,52 +126,6 @@ Tanggal: {now.strftime('%A, %d %B %Y')}
         return False, str(e)
 
 
-# def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_permohonan, alasan_penolakan=None):
-#     """Send single permohonan status notification email"""
-#     try:
-#         # Ambil app context (wajib untuk threading)
-#         app = current_app._get_current_object()
-#         now = datetime.now()
-
-#         subject = f"Status Permohonan Anda {status_permohonan.capitalize()} - {now.strftime('%d %b %Y')}"
-
-#         if status_permohonan.lower() == "ditandatangani":
-#             body = (
-#                 f"Halo {mahasiswa_nama},\n\n"
-#                 f"Dosen: {dosen_nama} ✅\n"
-#                 f"Tanggal: {now.strftime('%A, %d %B %Y')}\n\n"
-#                 f"Silakan cek aplikasi untuk melihat dokumen Anda.\n\n"
-#                 f"Terima kasih."
-#             )
-#         else:
-#             alasan_text = f"Alasan Penolakan: {alasan_penolakan}\n\n" if alasan_penolakan else ""
-#             body = (
-#                 f"Halo {mahasiswa_nama},\n\n"
-#                 f"Dosen: {dosen_nama} ❌\n"
-#                 f"{alasan_text}"
-#                 f"Tanggal: {now.strftime('%A, %d %B %Y')}\n\n"
-#                 f"Silakan lakukan revisi di aplikasi.\n\n"
-#                 f"Terima kasih."
-#             )
-
-#         msg = Message(
-#             subject=subject,
-#             recipients=[mahasiswa_email],
-#             body=body,
-#             sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
-#         )
-
-#         # Kirim email di background (tidak bikin API lemot)
-#         thread = threading.Thread(target=_send_async_email, args=(app, msg))
-#         thread.start()
-
-#         return True, None
-
-#     except Exception as e:
-#         print(f"❌ Email send error: {str(e)}")
-#         return False, str(e)
-
-
 def send_batch_permohonan_email(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
     """Send batch signed notification email"""
     try:
@@ -269,4 +223,138 @@ Terima kasih.
         
     except Exception as e:
         print(f"❌ Batch email send error: {str(e)}")
+        return False, str(e)
+    
+def send_maintenance_report_email(admin_email: str, result: dict):
+    """Send maintenance report to admin"""
+    try:
+        app = current_app._get_current_object()
+        now = datetime.now()
+        
+        deleted_count = result.get('deleted_count', 0)
+        failed_count = result.get('failed_count', 0)
+        
+        subject = f"🔧 Maintenance Report - {now.strftime('%d %B %Y')}"
+        
+        # Build deleted files list
+        deleted_list = ""
+        if result.get('deleted_files'):
+            for item in result['deleted_files'][:10]:  # Show max 10
+                note = f" ({item.get('note', '')})" if item.get('note') else ""
+                deleted_list += f"""
+                <li style="margin-bottom: 8px; font-size: 14px;">
+                    ID: <strong>{item['id']}</strong> - {item['file']}<br>
+                    <small style="color: #6b7280;">Signed: {item['signed_at']}{note}</small>
+                </li>
+                """
+            if len(result['deleted_files']) > 10:
+                deleted_list += f"<li><em>...and {len(result['deleted_files']) - 10} more</em></li>"
+        
+        # Build failed files list
+        failed_list = ""
+        if result.get('failed_files'):
+            for item in result['failed_files']:
+                failed_list += f"""
+                <li style="margin-bottom: 8px; font-size: 14px; color: #dc2626;">
+                    ID: <strong>{item['id']}</strong> - {item['file']}<br>
+                    <small>Error: {item['error']}</small>
+                </li>
+                """
+        
+        status_color = "#10b981" if failed_count == 0 else "#f59e0b"
+        status_icon = "✅" if failed_count == 0 else "⚠️"
+        
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 700px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
+                <div style="text-align: center; margin-bottom: 20px; padding: 20px; background: {status_color}; border-radius: 8px;">
+                    <h2 style="color: white; margin: 0;">{status_icon} Maintenance Report</h2>
+                    <p style="color: white; margin: 10px 0 0 0; font-size: 14px;">
+                        Auto-delete Old Signed Files
+                    </p>
+                </div>
+                
+                <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0; color: #1f2937;">📊 Summary</h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">✅ Successfully Deleted</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #10b981;">
+                                {deleted_count} files
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">❌ Failed</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">
+                                {failed_count} files
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;">📁 Total Processed</td>
+                            <td style="padding: 8px; text-align: right; font-weight: bold;">
+                                {result.get('total_processed', 0)} files
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                
+                {f'''
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #1f2937;">🗑️ Deleted Files</h3>
+                    <ul style="list-style: none; padding: 0;">
+                        {deleted_list}
+                    </ul>
+                </div>
+                ''' if deleted_list else ''}
+                
+                {f'''
+                <div style="margin-bottom: 20px; background: #fef2f2; padding: 15px; border-radius: 8px; border-left: 4px solid #dc2626;">
+                    <h3 style="color: #dc2626; margin-top: 0;">⚠️ Failed Operations</h3>
+                    <ul style="list-style: none; padding: 0;">
+                        {failed_list}
+                    </ul>
+                </div>
+                ''' if failed_list else ''}
+                
+                <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 6px; margin: 20px 0;">
+                    <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                        <strong>ℹ️ Info:</strong><br>
+                        Maintenance runs automatically on the 1st of every month at 02:00 AM Jakarta time.<br>
+                        Files older than 2 months from signing date are automatically deleted.
+                    </p>
+                </div>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+                
+                <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+                    Automated Maintenance System<br>
+                    {now.strftime('%A, %d %B %Y - %H:%M:%S')} WIB<br>
+                    Sistem Tanda Tangan Digital
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        from flask_mail import Message
+        msg = Message(
+            subject=subject,
+            recipients=[admin_email],
+            html=html_body,
+            sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
+        )
+        
+        import threading
+        def _send_async_email(app, msg):
+            with app.app_context():
+                from extensions import mail
+                mail.send(msg)
+        
+        thread = threading.Thread(target=_send_async_email, args=(app, msg))
+        thread.start()
+        
+        return True, None
+        
+    except Exception as e:
         return False, str(e)

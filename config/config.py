@@ -1,5 +1,5 @@
 # config.py
-import os
+import os, pytz
 from datetime import timedelta
 from decouple import config
 
@@ -39,6 +39,12 @@ class Config:
     ALLOWED_EXTENSIONS = set(config('ALLOWED_EXTENSIONS', default='pdf,doc,docx,jpg,jpeg,png').split(','))
     FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
+    # Admin Email untuk maintenance report
+    ADMIN_EMAIL = config('ADMIN_EMAIL', default='brilliancw06@gmail.com')
+    
+    # APScheduler Configuration
+    SCHEDULER_API_ENABLED = True
+    SCHEDULER_TIMEZONE = pytz.timezone('Asia/Jakarta')
 
     # Email / SMTP config
     MAIL_SERVER = config('MAIL_SERVER', default='smtp.gmail.com')
