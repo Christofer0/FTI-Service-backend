@@ -55,7 +55,18 @@ class Config:
     MAIL_PASSWORD = config('MAIL_PASSWORD', default=None)
     MAIL_DEFAULT_SENDER = config('MAIL_DEFAULT_SENDER', default=config('MAIL_USERNAME', default=None))
 
-
+    BATCH_CHUNK_SIZE = 10          # Process 10 permohonan at a time
+    EMAIL_BATCH_SIZE = 20          # Send 20 emails per batch
+    MAX_EMAIL_WORKERS = 5          # Max 5 concurrent email threads
+    MAX_BATCH_PERMOHONAN = 100     # Hard limit untuk safety
+    
+    # Database Optimization
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 5,              # Reduced dari default 10
+        'pool_recycle': 3600,        # Recycle connections after 1 hour
+        'pool_pre_ping': True,       # Test connections before use
+        'max_overflow': 2            # Reduced dari default 10
+    }
     
 
 class DevelopmentConfig(Config):

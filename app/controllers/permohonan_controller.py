@@ -246,10 +246,51 @@ def get_permohonan_for_dosen(current_user):
 
     
 # controllers/permohonan_controller.py
+# @permohonan_bp.route('/batch-sign', methods=['POST'])
+# @role_required('dosen')
+# def batch_sign_permohonan(current_user):
+#     """Batch sign multiple permohonan (dosen only)"""
+#     try:
+#         # Check if dosen has uploaded signature
+#         if not current_user.ttd_path:
+#             return error_response("Please upload your signature first", status_code=400)
+        
+#         data = request.json or {}
+#         permohonan_ids = data.get('permohonan_ids', [])
+        
+#         if not permohonan_ids or not isinstance(permohonan_ids, list):
+#             return error_response("permohonan_ids must be a non-empty array", status_code=400)
+        
+#         # Call batch sign service
+#         result, error = permohonan_service.batch_sign_permohonan(
+#             permohonan_ids, 
+#             current_user.id
+#         )
+        
+#         if error:
+#             return error_response(error, status_code=400)
+        
+#         # Format response
+#         return success_response(
+#             f"Batch signing completed: {len(result['success'])} success, {len(result['failed'])} failed",
+#             result,
+#             200
+#         )
+        
+#     except Exception as e:
+#         print("❌ Batch sign error:", str(e))
+#         print(traceback.format_exc())
+#         return error_response("Failed to batch sign permohonan", str(e), 500)
+
+
+# =============BARU====
 @permohonan_bp.route('/batch-sign', methods=['POST'])
 @role_required('dosen')
 def batch_sign_permohonan(current_user):
-    """Batch sign multiple permohonan (dosen only)"""
+    """
+    Batch sign multiple permohonan (dosen only)
+    Optimized untuk 1 vCPU server - Max 100 permohonan per batch
+    """
     try:
         # Check if dosen has uploaded signature
         if not current_user.ttd_path:
@@ -258,8 +299,23 @@ def batch_sign_permohonan(current_user):
         data = request.json or {}
         permohonan_ids = data.get('permohonan_ids', [])
         
+        # Validasi input
         if not permohonan_ids or not isinstance(permohonan_ids, list):
             return error_response("permohonan_ids must be a non-empty array", status_code=400)
+        
+        # Validasi jumlah (hard limit untuk 1 vCPU server)
+        MAX_BATCH = 100
+        if len(permohonan_ids) > MAX_BATCH:
+            return error_response(
+                f"Maximum {MAX_BATCH} permohonan per batch for server stability. "
+                f"You requested {len(permohonan_ids)}. Please split into multiple batches.",
+                status_code=400
+            )
+        
+        # Warning untuk batch besar
+        if len(permohonan_ids) > 50:
+            print(f"⚠️  Large batch detected: {len(permohonan_ids)} permohonan")
+            print(f"⚠️  Estimated time: {len(permohonan_ids) * 8}s - {len(permohonan_ids) * 12}s")
         
         # Call batch sign service
         result, error = permohonan_service.batch_sign_permohonan(
@@ -270,12 +326,25 @@ def batch_sign_permohonan(current_user):
         if error:
             return error_response(error, status_code=400)
         
-        # Format response
-        return success_response(
-            f"Batch signing completed: {len(result['success'])} success, {len(result['failed'])} failed",
-            result,
-            200
-        )
+        # Format response dengan detail
+        response_data = {
+            'summary': {
+                'total': result['total'],
+                'success': len(result['success']),
+                'failed': len(result['failed']),
+                'processing_time': result['processing_time'],
+                'avg_time_per_item': round(result['processing_time'] / result['total'], 2) if result['total'] > 0 else 0
+            },
+            'success': result['success'],
+            'failed': result['failed']
+        }
+        
+        # Success message
+        message = f"Batch signing completed: {len(result['success'])} success, {len(result['failed'])} failed"
+        if result['failed']:
+            message += f". Check 'failed' array for details."
+        
+        return success_response(message, response_data, 200)
         
     except Exception as e:
         print("❌ Batch sign error:", str(e))
