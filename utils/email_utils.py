@@ -1,5 +1,3 @@
-# utils/email_utils.py
-
 from flask_mail import Message
 from extensions import mail
 from flask import current_app
@@ -11,6 +9,7 @@ def _send_async_email(app, msg):
     """Helper untuk kirim email async"""
     with app.app_context():
         mail.send(msg)
+
 
 def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_permohonan, alasan_penolakan=None):
     """Send single permohonan status notification email (HTML styled)"""
@@ -29,9 +28,7 @@ def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_pe
 
         subject = f"Status Permohonan Anda: {status_permohonan.capitalize()} - {now.strftime('%d %b %Y')}"
 
-        # =============================
         # HTML Email Body
-        # =============================
         alasan_html = (
             f"""
             <div style="margin-top: 10px; padding: 12px; background:#fef2f2; border-left:4px solid #dc2626; border-radius:6px;">
@@ -47,13 +44,10 @@ def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_pe
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: auto; padding: 20px; border:1px solid #ddd; border-radius:12px; background:white;">
-
                 <div style="text-align:center; margin-bottom:20px;">
                     <h2 style="color:{color}; margin:0;">{icon} Permohonan Anda {status_permohonan.capitalize()}</h2>
                 </div>
-
                 <p>Halo <strong>{mahasiswa_nama}</strong>,</p>
-
                 <div style="background:{box_bg}; padding:15px; border-left:4px solid {color}; border-radius:6px;">
                     <p style="margin:0;">
                         Dosen: <strong>{dosen_nama}</strong><br>
@@ -61,20 +55,16 @@ def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_pe
                         Tanggal: {now.strftime('%A, %d %B %Y')}
                     </p>
                 </div>
-
                 {alasan_html}
-
                 <p style="margin-top:25px;">
                     {"Silakan cek aplikasi untuk melihat dokumen Anda." if is_signed else "Silakan lakukan revisi di aplikasi."}
                 </p>
-
                 <div style="text-align:center; margin-top:30px;">
                     <a href="{os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')}/mahasiswa/history"
                        style="background:#3b82f6; color:white; padding:14px 32px; text-decoration:none; border-radius:8px; font-weight:600;">
                         Buka Aplikasi
                     </a>
                 </div>
-
                 <hr style="margin:30px 0; border:none; border-top:1px solid #e5e7eb;">
                 <p style="font-size:12px; color:#9ca3af; text-align:center; margin:0;">
                     Email otomatis dari Sistem Tanda Tangan Digital<br>
@@ -86,9 +76,6 @@ def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_pe
         </html>
         """
 
-        # =============================
-        # Plain text fallback
-        # =============================
         plain_body = f"""Halo {mahasiswa_nama},
 
 Dosen: {dosen_nama}
@@ -96,7 +83,6 @@ Status: {status_permohonan.capitalize()}
 Tanggal: {now.strftime('%A, %d %B %Y')}
 
 """
-
         if not is_signed and alasan_penolakan:
             plain_body += f"Alasan Penolakan: {alasan_penolakan}\n\n"
 
@@ -106,7 +92,6 @@ Tanggal: {now.strftime('%A, %d %B %Y')}
             else "Silakan lakukan revisi di aplikasi."
         )
 
-        # Create Email Message
         msg = Message(
             subject=subject,
             recipients=[mahasiswa_email],
@@ -126,105 +111,240 @@ Tanggal: {now.strftime('%A, %d %B %Y')}
         return False, str(e)
 
 
-# def send_batch_permohonan_email(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
-#     """Send batch signed notification email"""
-#     try:
-#         # Ambil app context (wajib untuk threading)
-#         app = current_app._get_current_object()
-#         now = datetime.now()
+# ==========================================
+# BATCH EMAIL - ASYNC VERSION (untuk single call)
+# ==========================================
+def send_batch_permohonan_email(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
+    """
+    Send batch signed notification email (ASYNC with threading)
+    Use this for single email sending (not in parallel loop)
+    """
+    try:
+        app = current_app._get_current_object()
+        now = datetime.now()
         
-#         subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
+        subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
         
-#         # Build permohonan list HTML
-#         permohonan_items = ""
-#         for idx, p in enumerate(permohonan_list, 1):
-#             permohonan_items += f"""
-#             <li style="margin-bottom: 12px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
-#                 <strong style="color: #1f2937;">{idx}. {p['judul']}</strong><br>
-#                 <small style="color: #6b7280;">Jenis: {p['jenis']}</small>
-#             </li>
-#             """
+        # Build permohonan list HTML
+        permohonan_items = ""
+        for idx, p in enumerate(permohonan_list, 1):
+            jenis = p.get('jenis', '-')
+            # Handle jika jenis adalah object
+            if hasattr(jenis, 'nama_jenis_permohonan'):
+                jenis = jenis.nama_jenis_permohonan
+            elif not isinstance(jenis, str):
+                jenis = str(jenis) if jenis else '-'
+                
+            permohonan_items += f"""
+            <li style="margin-bottom: 12px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
+                <strong style="color: #1f2937;">{idx}. {p['judul']}</strong><br>
+                <small style="color: #6b7280;">Jenis: {jenis}</small>
+            </li>
+            """
         
-#         html_body = f"""
-#         <html>
-#         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-#             <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
-#                 <div style="text-align: center; margin-bottom: 20px;">
-#                     <h2 style="color: #10b981; margin: 0;">🎉 Permohonan Ditandatangani</h2>
-#                 </div>
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h2 style="color: #10b981; margin: 0;">🎉 Permohonan Ditandatangani</h2>
+                </div>
                 
-#                 <p>Halo <strong>{mahasiswa_name}</strong>,</p>
+                <p>Halo <strong>{mahasiswa_name}</strong>,</p>
                 
-#                 <p>Kabar baik! Dosen <strong>{dosen_name}</strong> telah menandatangani <strong style="color: #3b82f6;">{len(permohonan_list)} permohonan</strong> Anda:</p>
+                <p>Kabar baik! Dosen <strong>{dosen_name}</strong> telah menandatangani <strong style="color: #3b82f6;">{len(permohonan_list)} permohonan</strong> Anda:</p>
                 
-#                 <ul style="padding: 0; list-style: none;">
-#                     {permohonan_items}
-#                 </ul>
+                <ul style="padding: 0; list-style: none;">
+                    {permohonan_items}
+                </ul>
                 
-#                 <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 6px; margin: 20px 0;">
-#                     <p style="margin: 0; font-size: 14px; color: #1e40af;">
-#                         <strong>📥 Download Dokumen:</strong><br>
-#                         Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
-#                     </p>
-#                 </div>
+                <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 6px; margin: 20px 0;">
+                    <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                        <strong>📥 Download Dokumen:</strong><br>
+                        Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
+                    </p>
+                </div>
                 
-#                 <div style="text-align: center; margin-top: 30px;">
-#                     <a href="{os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')}/mahasiswa/history" 
-#                        style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">
-#                         Lihat History Permohonan Saya
-#                     </a>
-#                 </div>
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="{os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')}/mahasiswa/history" 
+                       style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">
+                        Lihat History Permohonan Saya
+                    </a>
+                </div>
                 
-#                 <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
                 
-#                 <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
-#                     Email otomatis dari Sistem Tanda Tangan Digital<br>
-#                     Tanggal: {now.strftime('%A, %d %B %Y')}<br>
-#                     Jangan balas email ini
-#                 </p>
-#             </div>
-#         </body>
-#         </html>
-#         """
+                <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+                    Email otomatis dari Sistem Tanda Tangan Digital<br>
+                    Tanggal: {now.strftime('%A, %d %B %Y')}<br>
+                    Jangan balas email ini
+                </p>
+            </div>
+        </body>
+        </html>
+        """
         
-#         # Plain text fallback
-#         plain_body = f"""
-# Halo {mahasiswa_name},
+        plain_body = f"""
+Halo {mahasiswa_name},
 
-# Kabar baik! Dosen {dosen_name} telah menandatangani {len(permohonan_list)} permohonan Anda:
+Kabar baik! Dosen {dosen_name} telah menandatangani {len(permohonan_list)} permohonan Anda:
 
-# """
-#         for idx, p in enumerate(permohonan_list, 1):
-#             plain_body += f"{idx}. {p['judul']} (Jenis: {p['jenis']})\n"
+"""
+        for idx, p in enumerate(permohonan_list, 1):
+            jenis = p.get('jenis', '-')
+            if hasattr(jenis, 'nama_jenis_permohonan'):
+                jenis = jenis.nama_jenis_permohonan
+            elif not isinstance(jenis, str):
+                jenis = str(jenis) if jenis else '-'
+            plain_body += f"{idx}. {p['judul']} (Jenis: {jenis})\n"
         
-#         plain_body += f"""
-# Tanggal: {now.strftime('%A, %d %B %Y')}
+        plain_body += f"""
+Tanggal: {now.strftime('%A, %d %B %Y')}
 
-# Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
+Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
 
-# Terima kasih.
-#         """
+Terima kasih.
+        """
         
-#         # Create message dengan HTML dan plain text
-#         msg = Message(
-#             subject=subject,
-#             recipients=[to_email],
-#             body=plain_body,  # Plain text fallback
-#             html=html_body,   # HTML version
-#             sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
-#         )
+        msg = Message(
+            subject=subject,
+            recipients=[to_email],
+            body=plain_body,
+            html=html_body,
+            sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
+        )
         
-#         # Kirim email di background (tidak bikin API lemot)
-#         thread = threading.Thread(target=_send_async_email, args=(app, msg))
-#         thread.start()
+        # Kirim email di background
+        thread = threading.Thread(target=_send_async_email, args=(app, msg))
+        thread.daemon = True
+        thread.start()
         
-#         print(f"✅ Batch email queued to {to_email} ({len(permohonan_list)} permohonan)")
-#         return True, None
+        print(f"  ✅ Batch email queued to {to_email} ({len(permohonan_list)} permohonan)")
+        return True, None
         
-#     except Exception as e:
-#         print(f"❌ Batch email send error: {str(e)}")
-#         return False, str(e)
-    
+    except Exception as e:
+        print(f"  ❌ Batch email send error: {str(e)}")
+        return False, str(e)
+
+
+# ==========================================
+# BATCH EMAIL - SYNC VERSION (untuk parallel execution)
+# ==========================================
+def send_batch_permohonan_email_sync(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
+    """
+    Send batch signed notification email (SYNCHRONOUS)
+    Use this when called from ThreadPoolExecutor or parallel loops
+    NO THREADING - sends directly
+    """
+    try:
+        now = datetime.now()
+        
+        subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
+        
+        # Build permohonan list HTML
+        permohonan_items = ""
+        for idx, p in enumerate(permohonan_list, 1):
+            jenis = p.get('jenis', '-')
+            # Handle jika jenis adalah object
+            if hasattr(jenis, 'nama_jenis_permohonan'):
+                jenis = jenis.nama_jenis_permohonan
+            elif not isinstance(jenis, str):
+                jenis = str(jenis) if jenis else '-'
+                
+            permohonan_items += f"""
+            <li style="margin-bottom: 12px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
+                <strong style="color: #1f2937;">{idx}. {p['judul']}</strong><br>
+                <small style="color: #6b7280;">Jenis: {jenis}</small>
+            </li>
+            """
+        
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h2 style="color: #10b981; margin: 0;">🎉 Permohonan Ditandatangani</h2>
+                </div>
+                
+                <p>Halo <strong>{mahasiswa_name}</strong>,</p>
+                
+                <p>Kabar baik! Dosen <strong>{dosen_name}</strong> telah menandatangani <strong style="color: #3b82f6;">{len(permohonan_list)} permohonan</strong> Anda:</p>
+                
+                <ul style="padding: 0; list-style: none;">
+                    {permohonan_items}
+                </ul>
+                
+                <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 6px; margin: 20px 0;">
+                    <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                        <strong>📥 Download Dokumen:</strong><br>
+                        Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
+                    </p>
+                </div>
+                
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="{os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')}/mahasiswa/history" 
+                       style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">
+                        Lihat History Permohonan Saya
+                    </a>
+                </div>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+                
+                <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+                    Email otomatis dari Sistem Tanda Tangan Digital<br>
+                    Tanggal: {now.strftime('%A, %d %B %Y')}<br>
+                    Jangan balas email ini
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        plain_body = f"""
+Halo {mahasiswa_name},
+
+Kabar baik! Dosen {dosen_name} telah menandatangani {len(permohonan_list)} permohonan Anda:
+
+"""
+        for idx, p in enumerate(permohonan_list, 1):
+            jenis = p.get('jenis', '-')
+            if hasattr(jenis, 'nama_jenis_permohonan'):
+                jenis = jenis.nama_jenis_permohonan
+            elif not isinstance(jenis, str):
+                jenis = str(jenis) if jenis else '-'
+            plain_body += f"{idx}. {p['judul']} (Jenis: {jenis})\n"
+        
+        plain_body += f"""
+Tanggal: {now.strftime('%A, %d %B %Y')}
+
+Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
+
+Terima kasih.
+        """
+        
+        msg = Message(
+            subject=subject,
+            recipients=[to_email],
+            body=plain_body,
+            html=html_body,
+            sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
+        )
+        
+        # Send directly (SYNCHRONOUS - NO THREADING)
+        # This will block for ~1-2s but it's called from ThreadPoolExecutor anyway
+        mail.send(msg)
+        
+        print(f"  ✅ Email sent to {to_email} ({len(permohonan_list)} permohonan)")
+        return True, None
+        
+    except Exception as e:
+        print(f"  ❌ Email send error for {to_email}: {str(e)}")
+        return False, str(e)
+
+
+# ==========================================
+# MAINTENANCE REPORT EMAIL
+# ==========================================
 def send_maintenance_report_email(admin_email: str, result: dict):
     """Send maintenance report to admin"""
     try:
@@ -239,7 +359,7 @@ def send_maintenance_report_email(admin_email: str, result: dict):
         # Build deleted files list
         deleted_list = ""
         if result.get('deleted_files'):
-            for item in result['deleted_files'][:10]:  # Show max 10
+            for item in result['deleted_files'][:10]:
                 note = f" ({item.get('note', '')})" if item.get('note') else ""
                 deleted_list += f"""
                 <li style="margin-bottom: 8px; font-size: 14px;">
@@ -337,7 +457,6 @@ def send_maintenance_report_email(admin_email: str, result: dict):
         </html>
         """
         
-        from flask_mail import Message
         msg = Message(
             subject=subject,
             recipients=[admin_email],
@@ -345,412 +464,10 @@ def send_maintenance_report_email(admin_email: str, result: dict):
             sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
         )
         
-        import threading
-        def _send_async_email(app, msg):
-            with app.app_context():
-                from extensions import mail
-                mail.send(msg)
-        
         thread = threading.Thread(target=_send_async_email, args=(app, msg))
         thread.start()
         
         return True, None
         
     except Exception as e:
-        return False, str(e)
-    
-
-
-
-
-
-
-
-
-import os
-import threading
-from datetime import datetime
-from flask import current_app
-from flask_mail import Message
-from extensions import mail
-
-
-def send_batch_permohonan_email(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
-    """
-    Send batch signed notification email
-    FIXED: Proper app context handling
-    """
-    try:
-        # PENTING: Ambil app instance SEBELUM threading
-        app = current_app._get_current_object()
-        
-        # Limit permohonan list untuk avoid huge emails
-        if len(permohonan_list) > 50:
-            permohonan_list = permohonan_list[:50]
-            truncated = True
-        else:
-            truncated = False
-        
-        now = datetime.now()
-        subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
-        
-        # Build permohonan list HTML
-        permohonan_items = ""
-        for idx, p in enumerate(permohonan_list, 1):
-            permohonan_items += f"""
-            <li style="margin-bottom: 12px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
-                <strong style="color: #1f2937;">{idx}. {p['judul']}</strong><br>
-                <small style="color: #6b7280;">Jenis: {p['jenis']}</small>
-            </li>
-            """
-        
-        # Truncation notice
-        truncation_notice = ""
-        if truncated:
-            truncation_notice = """
-            <div style="background: #fef3c7; padding: 12px; border-left: 4px solid #f59e0b; border-radius: 6px; margin: 15px 0;">
-                <p style="margin: 0; font-size: 13px; color: #92400e;">
-                    <strong>⚠️ Note:</strong> Hanya 50 permohonan pertama yang ditampilkan. 
-                    Lihat semua di sistem.
-                </p>
-            </div>
-            """
-        
-        # Get frontend URL dari config (dengan app context)
-        with app.app_context():
-            frontend_url = app.config.get('FRONTEND_URL', os.getenv('FRONTEND_URL', 'http://localhost:5173'))
-            mail_sender = app.config.get("MAIL_DEFAULT_SENDER")
-        
-        html_body = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <h2 style="color: #10b981; margin: 0;">🎉 Permohonan Ditandatangani</h2>
-                </div>
-                
-                <p>Halo <strong>{mahasiswa_name}</strong>,</p>
-                
-                <p>Kabar baik! Dosen <strong>{dosen_name}</strong> telah menandatangani <strong style="color: #3b82f6;">{len(permohonan_list)} permohonan</strong> Anda:</p>
-                
-                {truncation_notice}
-                
-                <ul style="padding: 0; list-style: none; max-height: 400px; overflow-y: auto;">
-                    {permohonan_items}
-                </ul>
-                
-                <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 6px; margin: 20px 0;">
-                    <p style="margin: 0; font-size: 14px; color: #1e40af;">
-                        <strong>📥 Download Dokumen:</strong><br>
-                        Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
-                    </p>
-                </div>
-                
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="{frontend_url}/mahasiswa/history" 
-                       style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">
-                        Lihat History Permohonan Saya
-                    </a>
-                </div>
-                
-                <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                
-                <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
-                    Email otomatis dari Sistem Tanda Tangan Digital<br>
-                    Tanggal: {now.strftime('%A, %d %B %Y %H:%M')}<br>
-                    Jangan balas email ini
-                </p>
-            </div>
-        </body>
-        </html>
-        """
-        
-        # Plain text fallback
-        plain_body = f"""
-Halo {mahasiswa_name},
-
-Kabar baik! Dosen {dosen_name} telah menandatangani {len(permohonan_list)} permohonan Anda:
-
-"""
-        for idx, p in enumerate(permohonan_list, 1):
-            plain_body += f"{idx}. {p['judul']} (Jenis: {p['jenis']})\n"
-        
-        if truncated:
-            plain_body += "\n⚠️ Note: Hanya 50 permohonan pertama yang ditampilkan. Lihat semua di sistem.\n"
-        
-        plain_body += f"""
-Tanggal: {now.strftime('%A, %d %B %Y %H:%M')}
-
-Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
-
-Link: {frontend_url}/mahasiswa/history
-
-Terima kasih.
-        """
-        
-        # Create message
-        msg = Message(
-            subject=subject,
-            recipients=[to_email],
-            body=plain_body,
-            html=html_body,
-            sender=mail_sender,
-        )
-        
-        # Send in background thread dengan proper app context
-        thread = threading.Thread(
-            target=_send_async_email, 
-            args=(app, msg)
-        )
-        thread.daemon = True
-        thread.start()
-        
-        print(f"  ✅ Email queued to {to_email} ({len(permohonan_list)} permohonan)")
-        return True, None
-        
-    except Exception as e:
-        print(f"  ❌ Email queue error for {to_email}: {str(e)}")
-        return False, str(e)
-
-
-def _send_async_email(app, msg):
-    """
-    Send email dengan proper app context
-    CRITICAL: Must wrap in app.app_context()
-    """
-    # PENTING: Push app context untuk thread
-    with app.app_context():
-        try:
-            mail.send(msg)
-            print(f"    ✅ Email sent successfully to {msg.recipients[0]}")
-        except Exception as e:
-            print(f"    ❌ Email send failed for {msg.recipients[0]}: {str(e)}")
-
-
-# ==========================================
-# Alternative: Send without threading (Synchronous)
-# Use this if threading still causes issues
-# ==========================================
-
-def send_batch_permohonan_email_sync(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
-    """
-    Send batch signed notification email (SYNCHRONOUS)
-    Use this if async version has issues
-    """
-    try:
-        now = datetime.now()
-        
-        # Limit list
-        if len(permohonan_list) > 50:
-            permohonan_list = permohonan_list[:50]
-            truncated = True
-        else:
-            truncated = False
-        
-        subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
-        
-        # Build HTML
-        permohonan_items = ""
-        for idx, p in enumerate(permohonan_list, 1):
-            permohonan_items += f"""
-            <li style="margin-bottom: 12px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
-                <strong style="color: #1f2937;">{idx}. {p['judul']}</strong><br>
-                <small style="color: #6b7280;">Jenis: {p['jenis']}</small>
-            </li>
-            """
-        
-        truncation_notice = ""
-        if truncated:
-            truncation_notice = """
-            <div style="background: #fef3c7; padding: 12px; border-left: 4px solid #f59e0b; border-radius: 6px; margin: 15px 0;">
-                <p style="margin: 0; font-size: 13px; color: #92400e;">
-                    <strong>⚠️ Note:</strong> Hanya 50 permohonan pertama yang ditampilkan.
-                </p>
-            </div>
-            """
-        
-        frontend_url = current_app.config.get('FRONTEND_URL', os.getenv('FRONTEND_URL', 'http://localhost:5173'))
-        
-        html_body = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <h2 style="color: #10b981; margin: 0;">🎉 Permohonan Ditandatangani</h2>
-                </div>
-                
-                <p>Halo <strong>{mahasiswa_name}</strong>,</p>
-                
-                <p>Kabar baik! Dosen <strong>{dosen_name}</strong> telah menandatangani <strong style="color: #3b82f6;">{len(permohonan_list)} permohonan</strong> Anda:</p>
-                
-                {truncation_notice}
-                
-                <ul style="padding: 0; list-style: none; max-height: 400px; overflow-y: auto;">
-                    {permohonan_items}
-                </ul>
-                
-                <div style="background: #eff6ff; padding: 15px; border-left: 4px solid #3b82f6; border-radius: 6px; margin: 20px 0;">
-                    <p style="margin: 0; font-size: 14px; color: #1e40af;">
-                        <strong>📥 Download Dokumen:</strong><br>
-                        Anda sekarang dapat mengunduh dokumen yang telah ditandatangani melalui sistem.
-                    </p>
-                </div>
-                
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="{frontend_url}/mahasiswa/history" 
-                       style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">
-                        Lihat History Permohonan Saya
-                    </a>
-                </div>
-                
-                <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                
-                <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
-                    Email otomatis dari Sistem Tanda Tangan Digital<br>
-                    Tanggal: {now.strftime('%A, %d %B %Y %H:%M')}<br>
-                    Jangan balas email ini
-                </p>
-            </div>
-        </body>
-        </html>
-        """
-        
-        plain_body = f"""
-Halo {mahasiswa_name},
-
-Kabar baik! Dosen {dosen_name} telah menandatangani {len(permohonan_list)} permohonan Anda:
-
-"""
-        for idx, p in enumerate(permohonan_list, 1):
-            plain_body += f"{idx}. {p['judul']} (Jenis: {p['jenis']})\n"
-        
-        if truncated:
-            plain_body += "\n⚠️ Note: Hanya 50 permohonan pertama yang ditampilkan.\n"
-        
-        plain_body += f"""
-Tanggal: {now.strftime('%A, %d %B %Y %H:%M')}
-
-Link: {frontend_url}/mahasiswa/history
-
-Terima kasih.
-        """
-        
-        # Create and send message (SYNCHRONOUS - no threading)
-        msg = Message(
-            subject=subject,
-            recipients=[to_email],
-            body=plain_body,
-            html=html_body,
-            sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
-        )
-        
-        # Send directly (will block API for ~1-2s per email)
-        mail.send(msg)
-        
-        print(f"  ✅ Email sent to {to_email} ({len(permohonan_list)} permohonan)")
-        return True, None
-        
-    except Exception as e:
-        print(f"  ❌ Email send error for {to_email}: {str(e)}")
-        return False, str(e)
-
-
-# ==========================================
-# OPTION 3: Better Threading with Copy Context
-# ==========================================
-
-from copy import copy
-
-def send_batch_permohonan_email_v2(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
-    """
-    Send batch email with better context handling
-    Uses copy_current_request_context for Flask 2.x+
-    """
-    try:
-        # Build email content (same as above)
-        now = datetime.now()
-        
-        if len(permohonan_list) > 50:
-            permohonan_list = permohonan_list[:50]
-            truncated = True
-        else:
-            truncated = False
-        
-        subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
-        
-        permohonan_items = ""
-        for idx, p in enumerate(permohonan_list, 1):
-            permohonan_items += f"""
-            <li style="margin-bottom: 12px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
-                <strong style="color: #1f2937;">{idx}. {p['judul']}</strong><br>
-                <small style="color: #6b7280;">Jenis: {p['jenis']}</small>
-            </li>
-            """
-        
-        truncation_notice = ""
-        if truncated:
-            truncation_notice = '<div style="background: #fef3c7; padding: 12px;"><p style="margin: 0;">⚠️ Hanya 50 permohonan pertama ditampilkan</p></div>'
-        
-        frontend_url = current_app.config.get('FRONTEND_URL', os.getenv('FRONTEND_URL', 'http://localhost:5173'))
-        
-        html_body = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-                <h2 style="color: #10b981; text-align: center;">🎉 Permohonan Ditandatangani</h2>
-                <p>Halo <strong>{mahasiswa_name}</strong>,</p>
-                <p>Dosen <strong>{dosen_name}</strong> telah menandatangani <strong>{len(permohonan_list)} permohonan</strong> Anda:</p>
-                {truncation_notice}
-                <ul style="padding: 0; list-style: none;">{permohonan_items}</ul>
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="{frontend_url}/mahasiswa/history" style="background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block;">
-                        Lihat History Permohonan
-                    </a>
-                </div>
-                <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                <p style="font-size: 12px; color: #9ca3af; text-align: center;">
-                    Email otomatis | {now.strftime('%d %B %Y %H:%M')}
-                </p>
-            </div>
-        </body>
-        </html>
-        """
-        
-        plain_body = f"Halo {mahasiswa_name},\n\nDosen {dosen_name} telah menandatangani {len(permohonan_list)} permohonan Anda.\n\n"
-        for idx, p in enumerate(permohonan_list, 1):
-            plain_body += f"{idx}. {p['judul']} ({p['jenis']})\n"
-        plain_body += f"\nLink: {frontend_url}/mahasiswa/history\n"
-        
-        msg = Message(
-            subject=subject,
-            recipients=[to_email],
-            body=plain_body,
-            html=html_body,
-            sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
-        )
-        
-        # Get app before threading
-        app = current_app._get_current_object()
-        
-        # Method 1: Using decorator (Flask 2.x+)
-        from flask import copy_current_request_context
-        
-        @copy_current_request_context
-        def send_email_with_context():
-            with app.app_context():
-                try:
-                    mail.send(msg)
-                    print(f"    ✅ Email sent to {to_email}")
-                except Exception as e:
-                    print(f"    ❌ Email failed: {str(e)}")
-        
-        thread = threading.Thread(target=send_email_with_context)
-        thread.daemon = True
-        thread.start()
-        
-        print(f"  ✅ Email queued to {to_email}")
-        return True, None
-        
-    except Exception as e:
-        print(f"  ❌ Email queue error: {str(e)}")
         return False, str(e)
