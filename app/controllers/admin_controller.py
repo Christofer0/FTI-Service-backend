@@ -60,27 +60,48 @@ def get_all_users():
         return error_response("Failed to get users", str(e), 500)
 
 
+# @admin_bp.route('/users/role/<role>', methods=['GET'])
+# @jwt_required()
+# def get_users_by_role(role):
+#     """Get users by role (admin only)"""
+#     try:
+#         is_admin, current_user, current_role = check_role_admin()
+#         if not is_admin:
+#             return error_response("You are not Admin", status_code=401)
+        
+        
+#         if role == "mahasiswa":
+#             users = view_mhs_service.get_all_mahasiswa()
+#         elif role == "dosen":
+#             users = view_dosen_service.get_all_dosen()
+
+#         # ubah ke list of dicts
+#         users_list = [user.to_dict() for user in users]
+
+#         return success_response(f"Users with role {role} retrieved", users_list)
+#     except Exception as e:
+#         return error_response("Failed to get users by role", str(e), 500)
+
 @admin_bp.route('/users/role/<role>', methods=['GET'])
 @jwt_required()
 def get_users_by_role(role):
-    """Get users by role (admin only)"""
     try:
         is_admin, current_user, current_role = check_role_admin()
         if not is_admin:
             return error_response("You are not Admin", status_code=401)
-        
-        
-        if role == "mahasiswa":
-            users = view_mhs_service.get_all()
-        elif role == "dosen":
-            users = view_dosen_service.get_all()
 
-        # ubah ke list of dicts
-        users_list = [user.to_dict() for user in users]
+        if role == "mahasiswa":
+            users_list = view_mhs_service.get_all_mahasiswa()
+        elif role == "dosen":
+            users_list = view_dosen_service.get_all_dosen()
+        else:
+            return error_response("Invalid role", 400)
 
         return success_response(f"Users with role {role} retrieved", users_list)
+
     except Exception as e:
         return error_response("Failed to get users by role", str(e), 500)
+
     
 @admin_bp.route('/users/<user_id>/<action>', methods=['POST'])
 @jwt_required()
