@@ -46,6 +46,4 @@ def upgrade():
     )
 
 def downgrade():
-    op.execute("DROP VIEW IF EXISTS v_mahasiswa CASCADE;")
-    op.execute("DROP VIEW IF EXISTS v_dosen CASCADE;")
-    op.execute("DROP VIEW IF EXISTS v_admin CASCADE;")
+    pass

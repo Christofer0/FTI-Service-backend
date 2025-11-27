@@ -33,7 +33,10 @@ class Dosen(db.Model):
     
 class ViewDosen(db.Model):
     __tablename__ = 'v_dosen'
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = {
+        'extend_existing': True,
+        'info': {'skip_autogenerate': True}  
+    }
     
     user_id = db.Column(db.String(36), primary_key=True)
     nomor_induk = db.Column(db.String(20))

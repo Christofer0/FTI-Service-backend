@@ -18,7 +18,10 @@ class Mahasiswa(db.Model):
     
 class ViewMahasiswa(db.Model):
     __tablename__ = 'v_mahasiswa'
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = {
+        'extend_existing': True,
+        'info': {'skip_autogenerate': True}  
+    }
     
     user_id = db.Column(db.String(36), primary_key=True)
     nomor_induk = db.Column(db.String(20))
