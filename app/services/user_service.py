@@ -36,6 +36,9 @@ class UserService(BaseService):
     def get_all(self):
         return self.user_repo.get_all(), None
     
+    def get_user_by_id(self, id:str) -> List:
+        return self.user_repo.get_by_id(id),None
+    
     def get_all_by_role(self, role: str) -> List:
         return self.user_repo.get_all_by_role(role), None
     

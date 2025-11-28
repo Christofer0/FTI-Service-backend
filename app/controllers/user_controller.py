@@ -60,6 +60,12 @@ def update_profile():
 
         # Validate request data
         update_data = update_user_schema.load(request.json)
+
+        profile_data , error = user_service.get_user_by_id(current_user_id)
+        role_profile = profile_data.role
+
+        if role_profile in ['admin','mahasiswa','dosen']:
+            update_data.pop('nama', None)
         
         # Update profile
         user, error = user_service.update_user_profile(current_user_id, update_data)
