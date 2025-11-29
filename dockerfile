@@ -10,4 +10,4 @@ COPY . .
 EXPOSE 2224
 
 # Gunicorn WSGI server
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:2224", "main:create_app()"]
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:2224", "main:create_app()"]
