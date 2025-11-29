@@ -1,5 +1,4 @@
 import os
-import time
 from datetime import datetime
 from .base_service import BaseService
 from app.repositories.permohonan_repository import PermohonanRepository
@@ -10,7 +9,9 @@ from utils.qr_utils import generate_qr_code
 from utils.notification_utils import *
 from extensions import db
 from flask import current_app
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 class PermohonanService(BaseService):
     """Service for permohonan operations"""
@@ -37,7 +38,7 @@ class PermohonanService(BaseService):
             db.session.flush()
             
             # Create history record
-            self._create_history_record(permohonan, 'created')
+            # self._create_history_record(permohonan, 'created')
             
             db.session.commit()
             
@@ -50,38 +51,27 @@ class PermohonanService(BaseService):
             db.session.rollback()
             return None, str(e)
     
-    def approve_permohonan(self, permohonan_id: int, dosen_id: str):
-        """Approve permohonan"""
-        try:
-            permohonan = self.permohonan_repo.get_by_id(permohonan_id)
-            if not permohonan:
-                return None, "Permohonan not found"
-            
-            if permohonan.id_dosen != dosen_id:
-                return None, "Unauthorized to approve this permohonan"
-            
-            if permohonan.status_permohonan != 'pending':
-                return None, "Permohonan cannot be approved"
-            
-            # Update status
-            permohonan.status_permohonan = 'disetujui'
-            permohonan.approved_at = datetime.utcnow()
-            # permohonan.komentar = komentar
-            
-            # Create history record
-            self._create_history_record(permohonan, 'approved')
-            
-            db.session.commit()
-            
-            # Send notification to mahasiswa
-            notify_permohonan_approved(permohonan)
-            
-            return permohonan, None
-            
-        except Exception as e:
-            db.session.rollback()
-            return None, str(e)
+    def get_permohonan_by_user(self, user_id: str, role: str):
+        """Get permohonan by user based on role"""
+        if role == 'mahasiswa':
+            return self.permohonan_repo.get_by_mahasiswa(user_id)
+        elif role == 'dosen':
+            return self.permohonan_repo.get_by_dosen(user_id)
+        elif role == 'admin':
+            return self.permohonan_repo.get_all()
+        else:
+            return []
     
+    def get_dashboard_stats(self):
+        """Get dashboard statistics"""
+        return self.permohonan_repo.get_dashboard_stats()
+
+    
+    # DOSEN
+    def get_permohonan_dosen(self, dosen_id: str, status: str = None, jenis_id: int = None):
+        """Get permohonan untuk halaman dosen"""
+        return self.permohonan_repo.get_by_dosen_with_filter(dosen_id, status, jenis_id)
+
     def reject_permohonan(self, permohonan_id: int, dosen_id: str, komentar_penolakan: str):
         """Reject permohonan"""
         try:
@@ -187,7 +177,7 @@ class PermohonanService(BaseService):
                 return None, f"Failed to generate QR code: {qr_error}"
             
             # ADD SIGNATURE TO PDF
-            signed_pdf_error = self._add_signature_to_permohonan_pdf(
+            signed_pdf_error = self._add_signature_to_permohonan_pdf_single(
                 permohonan, 
                 dosen.ttd_path, 
                 qr_filename,
@@ -240,7 +230,389 @@ class PermohonanService(BaseService):
             db.session.rollback()
             return None, str(e)
         
-    def _add_signature_to_permohonan_pdf(self, permohonan, ttd_path, qr_filename,dosen_id:str):
+    def batch_sign_permohonan(self, permohonan_ids: list, dosen_id: str):
+        """Batch sign multiple permohonan dengan parallel processing untuk PDF dan email"""
+        results = {
+            'success': [],
+            'failed': [],
+            'total': len(permohonan_ids)
+        }
+        
+        try:
+            # ✅ GET FLASK APP CONTEXT (CRITICAL!)
+            app = current_app._get_current_object()
+            
+            # Get dosen data once (optimization)
+            from app.models.dosen_model import Dosen
+            dosen = db.session.query(Dosen).filter_by(user_id=dosen_id).first()
+            if not dosen or not dosen.ttd_path:
+                return None, "Dosen signature not found"
+            
+            # Fetch all permohonan at once with eager loading
+            from app.models.mahasiswa_model import Mahasiswa
+            from app.models.user_model import User
+            from sqlalchemy.orm import joinedload
+            
+            # ✅ EAGER LOAD semua relasi yang dibutuhkan
+            permohonan_list = db.session.query(Permohonan)\
+                .options(
+                    joinedload(Permohonan.mahasiswa).joinedload(Mahasiswa.user),
+                    joinedload(Permohonan.jenis_permohonan)
+                )\
+                .filter(Permohonan.id.in_(permohonan_ids))\
+                .all()
+            
+            # Validate all permohonan first
+            validated_permohonan = []
+            for permohonan in permohonan_list:
+                # Validasi
+                if permohonan.id_dosen != dosen_id:
+                    results['failed'].append({
+                        'id': permohonan.id,
+                        'reason': 'Unauthorized - not your permohonan'
+                    })
+                    continue
+                
+                if permohonan.status_permohonan not in ['pending', 'disetujui']:
+                    results['failed'].append({
+                        'id': permohonan.id,
+                        'reason': f'Cannot sign (status: {permohonan.status_permohonan})'
+                    })
+                    continue
+                
+                if not permohonan.file_path:
+                    results['failed'].append({
+                        'id': permohonan.id,
+                        'reason': 'No file attached'
+                    })
+                    continue
+                
+                validated_permohonan.append(permohonan)
+            
+            # Check for missing IDs
+            found_ids = {p.id for p in permohonan_list}
+            for pid in permohonan_ids:
+                if pid not in found_ids:
+                    results['failed'].append({
+                        'id': pid,
+                        'reason': 'Permohonan not found'
+                    })
+            
+            if not validated_permohonan:
+                return results, None
+            
+            # ✅ PRE-LOAD semua data yang dibutuhkan untuk parallel processing
+            pdf_processing_tasks = []
+            for permohonan in validated_permohonan:
+                # Extract data di main thread (dalam app context)
+                task_data = {
+                    'permohonan_id': permohonan.id,
+                    'permohonan_judul': permohonan.judul,
+                    'file_path': permohonan.file_path,
+                    'mahasiswa_nama': permohonan.mahasiswa.user.nama if permohonan.mahasiswa and permohonan.mahasiswa.user else 'Unknown',
+                    'mahasiswa_nomor_induk': permohonan.mahasiswa.user.nomor_induk if permohonan.mahasiswa and permohonan.mahasiswa.user else None,
+                    'mahasiswa_email': permohonan.mahasiswa.user.email if permohonan.mahasiswa and permohonan.mahasiswa.user else None,
+                    'jenis_nama': permohonan.jenis_permohonan.nama_jenis_permohonan if permohonan.jenis_permohonan else '-'
+                }
+                pdf_processing_tasks.append(task_data)
+            
+            # ===== PARALLEL PROCESSING: QR Generation + PDF Signing =====
+            print(f"🚀 Starting parallel PDF processing for {len(pdf_processing_tasks)} permohonan...")
+            
+            pdf_processing_data = []
+            emails_to_send = {}
+            
+            # Use ThreadPoolExecutor for parallel PDF processing
+            max_workers = min(10, len(pdf_processing_tasks))
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all PDF processing tasks
+                future_to_task = {
+                    executor.submit(
+                        self._process_single_pdf_parallel_with_context,
+                        app,  # ✅ Pass Flask app
+                        task_data,
+                        dosen.ttd_path,
+                        dosen.nama_lengkap,
+                        dosen_id
+                    ): task_data
+                    for task_data in pdf_processing_tasks
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_task):
+                    task_data = future_to_task[future]
+                    try:
+                        success, pdf_data, mahasiswa_email, error_msg = future.result()
+                        
+                        if success:
+                            pdf_processing_data.append({
+                                'permohonan_id': task_data['permohonan_id'],
+                                'pdf_data': pdf_data
+                            })
+                            
+                            results['success'].append({
+                                'id': task_data['permohonan_id'],
+                                'judul': task_data['permohonan_judul']
+                            })
+                            
+                            # Collect email info
+                            if mahasiswa_email:
+                                if mahasiswa_email not in emails_to_send:
+                                    emails_to_send[mahasiswa_email] = {
+                                        'nama': task_data['mahasiswa_nama'],
+                                        'permohonan_list': []
+                                    }
+                                emails_to_send[mahasiswa_email]['permohonan_list'].append({
+                                    'judul': task_data['permohonan_judul'],
+                                    'jenis': task_data['jenis_nama']
+                                })
+                        else:
+                            results['failed'].append({
+                                'id': task_data['permohonan_id'],
+                                'reason': error_msg or 'PDF processing failed'
+                            })
+                            
+                    except Exception as e:
+                        print(f"❌ Error processing permohonan {task_data['permohonan_id']}: {str(e)}")
+                        results['failed'].append({
+                            'id': task_data['permohonan_id'],
+                            'reason': str(e)
+                        })
+            
+            print(f"✅ PDF processing completed: {len(pdf_processing_data)} successful")
+            
+            # ===== BATCH DATABASE UPDATE =====
+            if pdf_processing_data:
+                try:
+                    # Get fresh permohonan objects for update
+                    permohonan_map = {p.id: p for p in validated_permohonan}
+                    
+                    for item in pdf_processing_data:
+                        permohonan = permohonan_map[item['permohonan_id']]
+                        pdf_data = item['pdf_data']
+                        
+                        # Update permohonan
+                        permohonan.status_permohonan = 'ditandatangani'
+                        permohonan.signed_at = pdf_data['signed_at']
+                        permohonan.file_signed_path = pdf_data['signed_path']
+                        permohonan.qr_code_path = pdf_data['qr_filename']
+                        permohonan.qr_code_data = pdf_data['qr_data_string']
+                        
+                        # Delete original file
+                        from utils.file_utils import delete_file
+                        if permohonan.file_path:
+                            delete_file(permohonan.file_path)
+                    
+                    # Single commit for all changes
+                    db.session.commit()
+                    print(f"✅ Database batch update successful: {len(pdf_processing_data)} permohonan")
+                    
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"❌ Database commit failed: {str(e)}")
+                    # Mark all as failed
+                    for item in pdf_processing_data:
+                        # Find and remove from success
+                        for success_item in results['success'][:]:
+                            if success_item['id'] == item['permohonan_id']:
+                                results['success'].remove(success_item)
+                                break
+                        
+                        results['failed'].append({
+                            'id': item['permohonan_id'],
+                            'reason': 'Database commit failed'
+                        })
+                    return results, None
+            
+            # ===== PARALLEL EMAIL SENDING (Background) =====
+            if emails_to_send:
+                # Send emails in background thread (non-blocking)
+                thread = threading.Thread(
+                    target=self._send_batch_notifications_parallel,
+                    args=(app, emails_to_send, dosen.nama_lengkap)  # ✅ Pass app
+                )
+                thread.daemon = True
+                thread.start()
+                print(f"🚀 Background email sending started for {len(emails_to_send)} recipients")
+            
+            return results, None
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Batch signing failed: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return None, f"Failed to batch sign permohonan: {str(e)}"
+
+    # Fungsi lainya
+    def _add_signature_to_permohonan_pdf(self, permohonan, ttd_path, qr_filename, dosen_nama_lengkap):
+        """Menambahkan tanda tangan ke PDF permohonan (optimized - no DB query)"""
+        try:
+            from utils.pdf_utils import add_signature_to_pdf, get_full_file_path
+            
+            # Path file asli
+            original_pdf_path = get_full_file_path(permohonan.file_path, 'uploads')
+            
+            # Path tanda tangan
+            signature_path = get_full_file_path(ttd_path, 'uploads')
+            
+            # Path QR code
+            qr_path = get_full_file_path(qr_filename, 'qr_codes')
+            
+            # Generate nama file signed
+            original_filename = os.path.basename(permohonan.file_path)
+            name_without_ext = os.path.splitext(original_filename)[0]
+            signed_filename = f"{name_without_ext}_signed.pdf"
+            
+            # Path untuk save
+            ttd_folder = current_app.config['DOCUMENT_PERMOHONAN_TTD_PATH']
+            signed_absolute_path = os.path.join(ttd_folder, signed_filename)
+            
+            # Path relatif untuk database
+            relative_ttd_folder = os.path.relpath(ttd_folder, current_app.config['UPLOAD_SIGNED'])
+            signed_relative_path = os.path.join(relative_ttd_folder, signed_filename)
+            
+            # Proses PDF
+            success, error = add_signature_to_pdf(
+                original_pdf_path,
+                signature_path, 
+                qr_path,
+                signed_absolute_path,
+                dosen_nama_lengkap
+            )
+            
+            if not success:
+                return None, f"Failed to add signature to PDF: {error}"
+            
+            return signed_relative_path, None
+            
+        except Exception as e:
+            return None, f"Error processing PDF signature: {str(e)}"
+
+    
+    def _process_single_pdf_parallel_with_context(self, app, task_data: dict, ttd_path: str, 
+                                                   dosen_nama_lengkap: str, dosen_id: str):
+        """
+        Process QR generation + PDF signing untuk single permohonan (thread-safe dengan app context)
+        Returns: (success, pdf_data_dict, mahasiswa_email, error_msg)
+        """
+        # ✅ RUN dalam Flask app context
+        with app.app_context():
+            try:
+                # Generate QR code
+                signed_at = datetime.utcnow()
+                qr_data = {
+                    'permohonan_id': str(task_data['permohonan_id']),
+                    'signed_by': dosen_id,
+                    'signed_at': signed_at.isoformat(),
+                    'request_by': {
+                        'nama': task_data['mahasiswa_nama'],
+                        'nomor_induk': task_data['mahasiswa_nomor_induk']
+                    }
+                }
+                
+                qr_filename, qr_data_string, qr_error = generate_qr_code(qr_data, task_data['permohonan_id'])
+                if qr_error:
+                    return False, None, None, f"QR generation failed: {qr_error}"
+                
+                # Create temporary permohonan-like object for PDF processing
+                class TempPermohonan:
+                    def __init__(self, file_path):
+                        self.file_path = file_path
+                
+                temp_permohonan = TempPermohonan(task_data['file_path'])
+                
+                # Add signature to PDF
+                signed_path, pdf_error = self._add_signature_to_permohonan_pdf(
+                    temp_permohonan,
+                    ttd_path,
+                    qr_filename,
+                    dosen_nama_lengkap
+                )
+                if pdf_error:
+                    return False, None, None, pdf_error
+                
+                # Prepare data for batch DB update
+                pdf_data = {
+                    'signed_path': signed_path,
+                    'signed_at': signed_at,
+                    'qr_filename': qr_filename,
+                    'qr_data_string': qr_data_string
+                }
+                
+                mahasiswa_email = task_data['mahasiswa_email']
+                
+                print(f"  ✅ PDF processed: {task_data['permohonan_judul']}")
+                return True, pdf_data, mahasiswa_email, None
+                
+            except Exception as e:
+                print(f"  ❌ PDF processing error for {task_data['permohonan_id']}: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+                return False, None, None, str(e)
+
+
+    def _send_single_email_with_context(self, app, email: str, nama: str, dosen_name: str, permohonan_list: list):
+        """
+        ✅ WRAPPER: Send single email dengan app context untuk ThreadPoolExecutor
+        """
+        with app.app_context():
+            from utils.email_utils import send_batch_permohonan_email_sync
+            return send_batch_permohonan_email_sync(email, nama, dosen_name, permohonan_list)
+
+
+    def _send_batch_notifications_parallel(self, app, emails_to_send: dict, dosen_name: str):
+        """
+        Send batch email notifications in parallel (runs in background thread)
+        ✅ FIXED: Setiap task dibungkus dengan app.app_context() via wrapper
+        """
+        try:
+            print(f"📧 Starting parallel email sending to {len(emails_to_send)} recipients...")
+            
+            # Use ThreadPoolExecutor for parallel email sending
+            max_workers = min(5, len(emails_to_send))
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # ✅ Submit tasks dengan wrapper yang include app context
+                future_to_email = {
+                    executor.submit(
+                        self._send_single_email_with_context,  # ✅ Wrapper function
+                        app,  # ✅ Pass app untuk context
+                        email,
+                        data['nama'],
+                        dosen_name,
+                        data['permohonan_list']
+                    ): email
+                    for email, data in emails_to_send.items()
+                }
+                
+                success_count = 0
+                failed_count = 0
+                
+                for future in as_completed(future_to_email):
+                    email = future_to_email[future]
+                    try:
+                        status, err = future.result()
+                        if status:
+                            success_count += 1
+                            print(f"  ✅ Email sent to {email}")
+                        else:
+                            failed_count += 1
+                            print(f"  ❌ Email failed to {email}: {err}")
+                    except Exception as e:
+                        failed_count += 1
+                        print(f"  ❌ Email error to {email}: {str(e)}")
+            
+            print(f"📧 Email sending completed: {success_count} success, {failed_count} failed")
+            
+        except Exception as e:
+            print(f"❌ Batch email sending error: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+
+
+    def _add_signature_to_permohonan_pdf_single(self, permohonan, ttd_path, qr_filename,dosen_id:str):
         """Menambahkan tanda tangan ke PDF permohonan"""
         try:
             from utils.pdf_utils import add_signature_to_pdf, get_full_file_path
@@ -290,476 +662,49 @@ class PermohonanService(BaseService):
         except Exception as e:
             return f"Error processing PDF signature: {str(e)}"
 
-    
-    def get_permohonan_by_user(self, user_id: str, role: str):
-        """Get permohonan by user based on role"""
-        if role == 'mahasiswa':
-            return self.permohonan_repo.get_by_mahasiswa(user_id)
-        elif role == 'dosen':
-            return self.permohonan_repo.get_by_dosen(user_id)
-        elif role == 'admin':
-            return self.permohonan_repo.get_all()
-        else:
-            return []
-    
-    def get_dashboard_stats(self):
-        """Get dashboard statistics"""
-        return self.permohonan_repo.get_dashboard_stats()
-    
-    def _create_history_record(self, permohonan: Permohonan, action: str, komentar: str = None):
-        """Create history record"""
-        history = History(
-            permohonan_id=permohonan.id,
-            id_jenis_permohonan=permohonan.id_jenis_permohonan,
-            id_mahasiswa=permohonan.id_mahasiswa,
-            id_dosen=permohonan.id_dosen,
-            action=action,
-            komentar_permohonan=komentar,
-            signed_at=datetime.utcnow() if action == 'signed' else None
-        )
-        db.session.add(history)
+    #belom digunakan
+    # def _create_history_record(self, permohonan: Permohonan, action: str, komentar: str = None):
+    #     """Create history record"""
+    #     history = History(
+    #         permohonan_id=permohonan.id,
+    #         id_jenis_permohonan=permohonan.id_jenis_permohonan,
+    #         id_mahasiswa=permohonan.id_mahasiswa,
+    #         id_dosen=permohonan.id_dosen,
+    #         action=action,
+    #         komentar_permohonan=komentar,
+    #         signed_at=datetime.utcnow() if action == 'signed' else None
+    #     )
+    #     db.session.add(history)
 
-    def get_permohonan_dosen(self, dosen_id: str, status: str = None, jenis_id: int = None):
-        """Get permohonan untuk halaman dosen"""
-        return self.permohonan_repo.get_by_dosen_with_filter(dosen_id, status, jenis_id)
-
-    #0000
-    def _send_batch_notifications_smart(self, emails_dict: dict, dosen_name: str):
-        """
-        Smart email handler - auto select best method based on count
-        
-        Logic:
-        - 1-5 emails: Synchronous (simple, no threading overhead)
-        - 6-20 emails: Parallel with 5 threads (balanced)
-        - 21-50 emails: Parallel with 10 threads (faster)
-        - 51+ emails: Batched parallel (avoid overwhelming mail server)
-        """
-        from utils.email_utils import send_batch_permohonan_email_sync
-        
-        total_emails = len(emails_dict)
-        
-        if total_emails == 0:
-            print("  📧 No emails to send")
-            return
-        
-        print(f"\n📧 Sending {total_emails} emails...")
-        
-        # Prepare email list
-        emails_list = [
-            {
-                'email': email,
-                'nama': data['nama'],
-                'dosen_name': dosen_name,
-                'permohonan_list': data['permohonan_list']
-            }
-            for email, data in emails_dict.items()
-        ]
-        
-        # ==========================================
-        # DECISION LOGIC
-        # ==========================================
-        
-        if total_emails <= 5:
-            # Small batch: SYNCHRONOUS (most stable)
-            print(f"  📋 Mode: Synchronous (simple, {total_emails} emails)")
-            self._send_emails_synchronous(emails_list)
+    #belom digunakan
+    # def approve_permohonan(self, permohonan_id: int, dosen_id: str):
+    #     """Approve permohonan"""
+    #     try:
+    #         permohonan = self.permohonan_repo.get_by_id(permohonan_id)
+    #         if not permohonan:
+    #             return None, "Permohonan not found"
             
-        elif total_emails <= 20:
-            # Medium batch: PARALLEL with 5 threads
-            print(f"  🚀 Mode: Parallel (5 threads, {total_emails} emails)")
-            self._send_emails_parallel(emails_list, max_workers=5)
+    #         if permohonan.id_dosen != dosen_id:
+    #             return None, "Unauthorized to approve this permohonan"
             
-        elif total_emails <= 50:
-            # Large batch: PARALLEL with 10 threads
-            print(f"  🚀 Mode: Parallel (10 threads, {total_emails} emails)")
-            self._send_emails_parallel(emails_list, max_workers=10)
+    #         if permohonan.status_permohonan != 'pending':
+    #             return None, "Permohonan cannot be approved"
             
-        else:
-            # Very large batch: BATCHED PARALLEL with rate limiting
-            print(f"  📦 Mode: Batched Parallel ({total_emails} emails)")
-            self._send_emails_batched_parallel(emails_list)
-
-
-    def _send_emails_synchronous(self, emails_list: list):
-        """
-        Send emails synchronously (1 by 1)
-        Best for: 1-5 emails
-        Pros: Most stable, no threading issues
-        Cons: Slow for many emails
-        """
-        from utils.email_utils import send_batch_permohonan_email_sync
-        
-        success = 0
-        failed = 0
-        start_time = time.time()
-        
-        for idx, email_data in enumerate(emails_list, 1):
-            try:
-                status, err = send_batch_permohonan_email_sync(
-                    email_data['email'],
-                    email_data['nama'],
-                    email_data['dosen_name'],
-                    email_data['permohonan_list']
-                )
-                
-                if status:
-                    success += 1
-                else:
-                    failed += 1
-                    print(f"    ❌ Failed to {email_data['email']}: {err}")
-                    
-            except Exception as e:
-                failed += 1
-                print(f"    ❌ Error sending to {email_data['email']}: {str(e)}")
-        
-        elapsed = time.time() - start_time
-        print(f"  ✅ Synchronous complete: {success} sent, {failed} failed ({elapsed:.2f}s)")
-
-
-    def _send_emails_parallel(self, emails_list: list, max_workers: int = 5):
-        """
-        Send emails in parallel with ThreadPoolExecutor
-        Best for: 6-50 emails
-        Pros: Faster than sync
-        Cons: Need proper app context handling
-        """
-        from flask import current_app
-        
-        app = current_app._get_current_object()
-        
-        success = 0
-        failed = 0
-        start_time = time.time()
-        
-        # Use ThreadPoolExecutor for parallel sending
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            futures = {
-                executor.submit(
-                    self._send_single_email_with_context,
-                    app,
-                    email_data['email'],
-                    email_data['nama'],
-                    email_data['dosen_name'],
-                    email_data['permohonan_list']
-                ): email_data['email']
-                for email_data in emails_list
-            }
+    #         # Update status
+    #         permohonan.status_permohonan = 'disetujui'
+    #         permohonan.approved_at = datetime.utcnow()
+    #         # permohonan.komentar = komentar
             
-            # Wait for completion
-            for future in as_completed(futures):
-                email = futures[future]
-                try:
-                    status, err = future.result(timeout=30)
-                    if status:
-                        success += 1
-                    else:
-                        failed += 1
-                        print(f"    ❌ Failed to {email}: {err}")
-                except Exception as e:
-                    failed += 1
-                    print(f"    ❌ Error sending to {email}: {str(e)}")
-        
-        elapsed = time.time() - start_time
-        print(f"  ✅ Parallel complete: {success} sent, {failed} failed ({elapsed:.2f}s)")
-
-
-    def _send_emails_batched_parallel(self, emails_list: list, batch_size: int = 20, max_workers: int = 10):
-        """
-        Send emails in batches with parallel processing
-        Best for: 51+ emails
-        Pros: Rate limiting, avoid spam detection
-        Cons: Slower but safer
-        """
-        from flask import current_app
-        
-        app = current_app._get_current_object()
-        
-        total_emails = len(emails_list)
-        total_success = 0
-        total_failed = 0
-        
-        # Split into batches
-        batches = [emails_list[i:i + batch_size] 
-                for i in range(0, total_emails, batch_size)]
-        
-        print(f"  📦 Processing {len(batches)} batches of {batch_size} emails each")
-        
-        for batch_idx, batch in enumerate(batches, 1):
-            print(f"\n  📧 Batch {batch_idx}/{len(batches)} ({len(batch)} emails)...")
-            batch_start = time.time()
+    #         # Create history record
+    #         # self._create_history_record(permohonan, 'approved')
             
-            success = 0
-            failed = 0
+    #         db.session.commit()
             
-            # Process batch in parallel
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(
-                        self._send_single_email_with_context,
-                        app,
-                        email_data['email'],
-                        email_data['nama'],
-                        email_data['dosen_name'],
-                        email_data['permohonan_list']
-                    ): email_data['email']
-                    for email_data in batch
-                }
-                
-                for future in as_completed(futures):
-                    email = futures[future]
-                    try:
-                        status, err = future.result(timeout=30)
-                        if status:
-                            success += 1
-                        else:
-                            failed += 1
-                            print(f"      ❌ Failed to {email}: {err}")
-                    except Exception as e:
-                        failed += 1
-                        print(f"      ❌ Error: {str(e)}")
+    #         # Send notification to mahasiswa
+    #         notify_permohonan_approved(permohonan)
             
-            total_success += success
-            total_failed += failed
+    #         return permohonan, None
             
-            batch_time = time.time() - batch_start
-            print(f"    ✅ Batch {batch_idx}: {success} sent, {failed} failed ({batch_time:.2f}s)")
-            
-            # Rate limiting: wait between batches
-            if batch_idx < len(batches):
-                wait_time = 2  # 2 seconds between batches
-                print(f"    ⏳ Waiting {wait_time}s before next batch...")
-                time.sleep(wait_time)
-        
-        print(f"\n  ✅ All batches complete: {total_success} sent, {total_failed} failed")
-
-
-    def _send_single_email_with_context(self, app, to_email: str, mahasiswa_name: str, 
-                                        dosen_name: str, permohonan_list: list):
-        """
-        Send single email with proper Flask app context
-        Thread-safe wrapper for parallel execution
-        """
-        with app.app_context():
-            try:
-                from utils.email_utils import send_batch_permohonan_email_sync
-                
-                status, err = send_batch_permohonan_email_sync(
-                    to_email,
-                    mahasiswa_name,
-                    dosen_name,
-                    permohonan_list
-                )
-                
-                return status, err
-                
-            except Exception as e:
-                return False, str(e)
-
-
-    # ==========================================
-    # UPDATE: Main batch_sign_permohonan
-    # ==========================================
-
-    def batch_sign_permohonan(self, permohonan_ids: list, dosen_id: str):
-        """
-        Batch sign optimized untuk 1 vCPU server
-        WITH SMART EMAIL HANDLER
-        """
-        
-        MAX_BATCH_SIZE = 100
-        if len(permohonan_ids) > MAX_BATCH_SIZE:
-            return None, f"Maximum {MAX_BATCH_SIZE} permohonan per batch. Please split into multiple batches."
-        
-        results = {
-            'success': [],
-            'failed': [],
-            'total': len(permohonan_ids),
-            'processing_time': 0
-        }
-        
-        start_time = time.time()
-        
-        try:
-            # Get dosen data once
-            from app.models.dosen_model import Dosen
-            dosen = db.session.query(Dosen).filter_by(user_id=dosen_id).first()
-            if not dosen or not dosen.ttd_path:
-                return None, "Dosen signature not found"
-            
-            # Process dalam chunks
-            CHUNK_SIZE = 10
-            chunks = [permohonan_ids[i:i + CHUNK_SIZE] 
-                    for i in range(0, len(permohonan_ids), CHUNK_SIZE)]
-            
-            emails_to_send = {}
-            
-            print(f"\n📦 Processing {len(permohonan_ids)} permohonan in {len(chunks)} chunks")
-            print(f"⚙️  Server mode: Sequential PDF + Smart Email (1 vCPU optimized)")
-            
-            # Process each chunk (EXISTING CODE - no change)
-            for chunk_idx, chunk in enumerate(chunks, 1):
-                print(f"\n🔄 Chunk {chunk_idx}/{len(chunks)} - Processing {len(chunk)} permohonan...")
-                chunk_start = time.time()
-                
-                for permohonan_id in chunk:
-                    try:
-                        permohonan = self.permohonan_repo.get_by_id(permohonan_id)
-                        
-                        # Validasi (same as before)
-                        if not permohonan:
-                            results['failed'].append({
-                                'id': permohonan_id,
-                                'reason': 'Permohonan not found'
-                            })
-                            continue
-                        
-                        if permohonan.id_dosen != dosen_id:
-                            results['failed'].append({
-                                'id': permohonan_id,
-                                'reason': 'Unauthorized - not your permohonan'
-                            })
-                            continue
-                        
-                        if permohonan.status_permohonan not in ['pending', 'disetujui']:
-                            results['failed'].append({
-                                'id': permohonan_id,
-                                'reason': f'Cannot sign (status: {permohonan.status_permohonan})'
-                            })
-                            continue
-                        
-                        if not permohonan.file_path:
-                            results['failed'].append({
-                                'id': permohonan_id,
-                                'reason': 'No file attached'
-                            })
-                            continue
-                        
-                        # Process signature
-                        success, mahasiswa_data = self._process_single_signature_batch(
-                            permohonan, dosen, dosen_id
-                        )
-                        
-                        if success:
-                            results['success'].append({
-                                'id': permohonan_id,
-                                'judul': permohonan.judul
-                            })
-                            
-                            # Collect email info
-                            if mahasiswa_data and mahasiswa_data['email']:
-                                email = mahasiswa_data['email']
-                                if email not in emails_to_send:
-                                    emails_to_send[email] = {
-                                        'nama': mahasiswa_data['nama'],
-                                        'permohonan_list': []
-                                    }
-                                emails_to_send[email]['permohonan_list'].append({
-                                    'judul': permohonan.judul,
-                                    'jenis': mahasiswa_data['jenis']
-                                })
-                        else:
-                            results['failed'].append({
-                                'id': permohonan_id,
-                                'reason': 'Signature processing failed'
-                            })
-                            
-                    except Exception as e:
-                        print(f"  ❌ Error processing {permohonan_id}: {str(e)}")
-                        results['failed'].append({
-                            'id': permohonan_id,
-                            'reason': str(e)
-                        })
-                        continue
-                
-                # Commit per chunk
-                try:
-                    db.session.commit()
-                    chunk_time = time.time() - chunk_start
-                    print(f"  ✅ Chunk {chunk_idx} committed in {chunk_time:.2f}s")
-                except Exception as e:
-                    db.session.rollback()
-                    print(f"  ❌ Chunk {chunk_idx} rollback: {str(e)}")
-                
-                # Delay between chunks
-                if chunk_idx < len(chunks):
-                    time.sleep(1)
-            
-            # Send emails with SMART handler
-            if emails_to_send:
-                self._send_batch_notifications_smart(emails_to_send, dosen.nama_lengkap)
-            
-            results['processing_time'] = round(time.time() - start_time, 2)
-            
-            print(f"\n✅ Batch signing completed!")
-            print(f"   Success: {len(results['success'])}")
-            print(f"   Failed: {len(results['failed'])}")
-            print(f"   Total time: {results['processing_time']}s")
-            
-            return results, None
-            
-        except Exception as e:
-            db.session.rollback()
-            print(f"\n❌ Batch signing failed, rolled back: {str(e)}")
-            return None, f"Failed to batch sign permohonan: {str(e)}"
-        
-    def _process_single_signature_batch(self, permohonan, dosen, dosen_id: str):
-        """Process signature untuk single permohonan dalam batch (tanpa commit)"""
-        try:
-            # Get mahasiswa data
-            from app.models.mahasiswa_model import Mahasiswa
-            mahasiswa = db.session.query(Mahasiswa).filter_by(user_id=permohonan.id_mahasiswa).first()
-            if not mahasiswa:
-                return False, None
-            
-            # Generate QR code
-            qr_data = {
-                'permohonan_id': str(permohonan.id),
-                'signed_by': dosen_id,
-                'signed_at': datetime.utcnow().isoformat(),
-                'request_by': {
-                    'nama': mahasiswa.user.nama if mahasiswa.user else 'Unknown',
-                    'nomor_induk': mahasiswa.user.nomor_induk
-                }
-            }
-            
-            qr_filename, qr_data_string, qr_error = generate_qr_code(qr_data, permohonan.id)
-            if qr_error:
-                print(f"❌ QR generation failed for {permohonan.id}: {qr_error}")
-                return False, None
-            
-            # Add signature to PDF
-            signed_pdf_error = self._add_signature_to_permohonan_pdf(
-                permohonan, 
-                dosen.ttd_path, 
-                qr_filename,
-                dosen_id
-            )
-            if signed_pdf_error:
-                print(f"❌ PDF signing failed for {permohonan.id}: {signed_pdf_error}")
-                return False, None
-            
-            # Update status (tanpa commit - akan di-commit batch)
-            permohonan.status_permohonan = 'ditandatangani'
-            permohonan.signed_at = datetime.utcnow()
-            permohonan.qr_code_path = qr_filename
-            permohonan.qr_code_data = qr_data_string
-            
-            # Delete original file
-            from utils.file_utils import delete_file
-            if permohonan.file_path:
-                delete_file(permohonan.file_path)
-            
-            # Return mahasiswa email for batch notification
-            # mahasiswa_email = mahasiswa.user.email if mahasiswa.user else None
-            # return True, mahasiswa_email
-            return True, {
-                'email': mahasiswa.user.email if mahasiswa.user else None,
-                'nama': mahasiswa.user.nama if mahasiswa.user else None,
-                'jenis': permohonan.jenis_permohonan if hasattr(permohonan, 'jenis_permohonan') else None
-            }
-
-            
-        except Exception as e:
-            print(f"❌ Error processing signature for permohonan {permohonan.id}: {str(e)}")
-            return False, None
+    #     except Exception as e:
+    #         db.session.rollback()
+    #         return None, str(e)

@@ -6,9 +6,12 @@ import threading
 import os
 
 def _send_async_email(app, msg):
-    """Helper untuk kirim email async"""
+    """Helper function to send email asynchronously"""
     with app.app_context():
-        mail.send(msg)
+        try:
+            mail.send(msg)
+        except Exception as e:
+            print(f"❌ Email send error: {str(e)}")
 
 
 def send_permohonan_email(mahasiswa_email, mahasiswa_nama, dosen_nama, status_permohonan, alasan_penolakan=None):
@@ -110,10 +113,6 @@ Tanggal: {now.strftime('%A, %d %B %Y')}
         print(f"❌ Email send error: {str(e)}")
         return False, str(e)
 
-
-# ==========================================
-# BATCH EMAIL - ASYNC VERSION (untuk single call)
-# ==========================================
 def send_batch_permohonan_email(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
     """
     Send batch signed notification email (ASYNC with threading)
@@ -227,16 +226,15 @@ Terima kasih.
         return False, str(e)
 
 
-# ==========================================
-# BATCH EMAIL - SYNC VERSION (untuk parallel execution)
-# ==========================================
 def send_batch_permohonan_email_sync(to_email: str, mahasiswa_name: str, dosen_name: str, permohonan_list: list):
     """
-    Send batch signed notification email (SYNCHRONOUS)
-    Use this when called from ThreadPoolExecutor or parallel loops
-    NO THREADING - sends directly
+    Send batch signed notification email (SYNCHRONOUS - direct send)
+    ✅ FIXED: Tidak pakai threading lagi karena sudah dalam ThreadPoolExecutor
+    Use this when already running in a ThreadPoolExecutor
     """
     try:
+        # ✅ CRITICAL: Ambil app HARUS dari current_app (bukan parameter)
+        # Karena kita sudah wrap dengan app.app_context() di caller
         now = datetime.now()
         
         subject = f"✅ {len(permohonan_list)} Permohonan Ditandatangani - {now.strftime('%d %b %Y')}"
@@ -330,20 +328,21 @@ Terima kasih.
             sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
         )
         
-        # Send directly (SYNCHRONOUS - NO THREADING)
-        # This will block for ~1-2s but it's called from ThreadPoolExecutor anyway
+        # ✅ Kirim email SYNCHRONOUSLY (langsung, tanpa thread baru)
+        # Karena sudah dalam ThreadPoolExecutor DAN app.app_context()
         mail.send(msg)
         
-        print(f"  ✅ Email sent to {to_email} ({len(permohonan_list)} permohonan)")
         return True, None
         
     except Exception as e:
-        print(f"  ❌ Email send error for {to_email}: {str(e)}")
+        print(f"  ❌ Email send error to {to_email}: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         return False, str(e)
 
 
 # ==========================================
-# MAINTENANCE REPORT EMAIL
+# MAINTENANCE REPORT EMAIL to Admin
 # ==========================================
 def send_maintenance_report_email(admin_email: str, result: dict):
     """Send maintenance report to admin"""
@@ -471,3 +470,4 @@ def send_maintenance_report_email(admin_email: str, result: dict):
         
     except Exception as e:
         return False, str(e)
+    
