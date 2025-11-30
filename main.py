@@ -21,7 +21,6 @@ def create_app(config_name=None):
     os.makedirs(app.config['QR_CODE_FOLDER'], exist_ok=True)
     
     # Register blueprints
-    from app.controllers.auth_controller import auth_bp
     from app.controllers.google_auth_controller import google_auth_bp
     from app.controllers.user_controller import user_bp
     from app.controllers.dosen_controller import dosen_bp
@@ -37,7 +36,6 @@ def create_app(config_name=None):
     #after scan
     from app.controllers.verify_controller import verify_bp
 
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(google_auth_bp, url_prefix='/api/auth')
     app.register_blueprint(user_bp, url_prefix='/api/users')
 
