@@ -1,12 +1,10 @@
-# ============================================
-# FILE 2: app/controllers/google_auth_controller.py
-# ============================================
 from flask import Blueprint, request, jsonify, redirect
 from marshmallow import ValidationError, Schema, fields
 import os
-
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.services.google_oauth_service import GoogleOAuthService
 from schemas.user_schema import UserSchema
+from schemas.google_auth_schema import *
 from utils.response_utils import success_response, error_response
 from werkzeug.datastructures import FileStorage
 
@@ -14,46 +12,12 @@ from werkzeug.datastructures import FileStorage
 google_auth_bp = Blueprint('google_auth', __name__)
 google_oauth_service = GoogleOAuthService()
 user_schema = UserSchema()
-
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://fti-service.netlify.app')
-
-
-# Validation Schemas
-class GoogleTokenSchema(Schema):
-    """Schema for Google token validation"""
-    token = fields.Str(required=True)
-
-
-class CompleteProfileMahasiswaSchema(Schema):
-    """Schema for completing mahasiswa profile"""
-    token = fields.Str(required=True)  # Google token
-    semester = fields.Int(required=True, validate=lambda x: 1 <= x <= 14)
-    no_hp = fields.Str(required=True)
-
-class CompleteProfileAdminSchema(Schema):
-    """Schema for completing admin profile"""
-    token = fields.Str(required=True)
-    nomor_induk = fields.Str(required=True)
-    no_hp = fields.Str(required=True)
-
-
-class CompleteProfileDosenSchema(Schema):
-    """Schema for completing dosen profile"""
-    token = fields.Str(required=True)
-    nomor_induk = fields.Str(required=True)
-    no_hp = fields.Str(required=True)
-    gelar_depan = fields.Str(required=False, allow_none=True)
-    gelar_belakang = fields.Str(required=False, allow_none=True)
-    jabatan = fields.Str(required=False, allow_none=True)
-    fakultas_id = fields.Int(required=True)
-
-
-
 google_token_schema = GoogleTokenSchema()
 complete_profile_mahasiswa_schema = CompleteProfileMahasiswaSchema()
 complete_profile_admin_schema = CompleteProfileAdminSchema()
 complete_profile_dosen_schema = CompleteProfileDosenSchema()
 
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 @google_auth_bp.route('/google/login', methods=['POST'])
 def google_login():
@@ -140,7 +104,7 @@ def google_login():
         response_data = {
             'access_token': result['access_token'],
             'refresh_token': result['refresh_token'],
-            'expires_in': 3600,
+            'expires_in': 20,
             'user': user_schema.dump(user),
             f'{user.role}': additional_data  # 'mahasiswa' or 'dosen' or None for admin
         }
@@ -249,83 +213,6 @@ def complete_profile_admin():
     except Exception as e:
         return error_response("Registrasi gagal", str(e), 500)
     
-# @google_auth_bp.route('/google/complete-profile/dosen', methods=['POST'])
-# def complete_profile_dosen():
-#     """
-#     Complete profile for new dosen after Google login
-#     Supports multipart/form-data for file upload
-    
-#     Form fields:
-#     - token: google_oauth_token
-#     - nomor_induk: NIP/NIDN dosen
-#     - no_hp: Nomor HP
-#     - gelar_depan: Gelar depan (optional)
-#     - gelar_belakang: Gelar belakang (optional)
-#     - jabatan: Jabatan (optional)
-#     - fakultas_id: ID fakultas
-#     - signature: File upload tanda tangan (optional)
-#     """
-#     try:    
-#         form_data = request.form.to_dict()
-
-#         # validate req
-#         data = complete_profile_dosen_schema.load(form_data)
-
-#         signature_file = None
-#         if 'signature' in request.files:
-#             signature_file = request.files.get('signature')
-#             if signature_file.filename == '':
-#                 signature_file = None
-#             else:
-#                 # Additional validation for signature file
-#                 from utils.file_utils import is_signature_file  # If you add this function
-#                 if not is_signature_file(signature_file.filename):
-#                     return error_response(
-#                         "File tanda tangan harus berformat PNG, JPG, JPEG, atau GIF",
-#                         status_code=400
-#                     )
-
-#         #Verify Google token and get user data
-#         google_data, error = google_oauth_service.verify_google_token(data['token'])
-#         if error:
-#             return error_response(error, status_code=400)
-        
-#         result, error = google_oauth_service.create_dosen_from_google(
-#             google_data=google_data,
-#             nomor_induk=data['nomor_induk'],
-#             no_hp=data['no_hp'],
-#             gelar_depan=data.get('gelar_depan'),
-#             gelar_belakang=data.get('gelar_belakang'),
-#             jabatan=data.get('jabatan'),
-#             fakultas_id=data['fakultas_id'],
-#             signature_file=signature_file
-#         )
-
-#         if error:
-#             return error_response(error, status_code=400)
-        
-#         #Get dosen data
-#         from app.models.dosen_model import Dosen
-#         from schemas.dosen_schema import DosenSchema
-
-#         dosen = Dosen.query.filter_by(user_id=result['user'].id).first()
-#         dosen_data = DosenSchema().dump(dosen) if dosen else None
-
-#         response_data = {
-#             'access_token' : result['access_token'],
-#             'refresh_token': result['refresh_token'],
-#             'expires_in' : 3600,
-#             'user' : user_schema.dump(result['user']),
-#             'dosen':dosen_data
-#         }
-
-#         return success_response("Registrasi berhasil! Selamat datang", response_data, 201)
-    
-#     except ValidationError as e:
-#         return error_response("Validation error", e.messages, 400)
-#     except Exception as e:
-#         print(f"ERROR DI COMPLETE DATA DOSEN : {str(e)}")
-#         return error_response("Registrasi gagal", str(e), 500)
 
 @google_auth_bp.route('/google/complete-profile/dosen', methods=['POST'])
 def complete_profile_dosen():
@@ -337,22 +224,7 @@ def complete_profile_dosen():
         # Validate form data
         data = complete_profile_dosen_schema.load(form_data)
         
-        # Get signature file if uploaded
-        # signature_file = None
-        # print(request.files,"files di controler")
-        # if 'signature' in request.files:
-        #     print("001 MASUK")
-        #     signature_file = request.files.get('tanda_tangan')
-        #     if signature_file.filename == '':
-        #         signature_file = None
-        #     else:
-        #         # Additional validation for signature file
-        #         from utils.file_utils import is_signature_file  # If you add this function
-        #         if not is_signature_file(signature_file.filename):
-        #             return error_response(
-        #                 "File tanda tangan harus berformat PNG, JPG, JPEG, atau GIF",
-        #                 status_code=400
-        #             )
+
         signature_file = None
         print("FILES RECEIVED:", request.files)
 
@@ -431,3 +303,19 @@ def google_callback():
         return redirect(f"{FRONTEND_URL}/login?error=no_code")
     
     return redirect(f"{FRONTEND_URL}/auth/google/callback?code={code}")
+
+@google_auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    """Refresh access token"""
+    try:
+        user_id = get_jwt_identity()
+        result, error = google_oauth_service.refresh_token(user_id)
+        
+        if error:
+            return error_response(error, status_code=401)
+        
+        return success_response("Token refreshed", result)
+        
+    except Exception as e:
+        return error_response("Token refresh failed", str(e), 500)

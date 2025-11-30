@@ -19,7 +19,8 @@ class PermohonanService(BaseService):
     def __init__(self):
         self.permohonan_repo = PermohonanRepository()
         self.user_repo = UserRepository()
-    
+
+
     def create_permohonan(self, mahasiswa_id: str, permohonan_data: dict, file_path: str = None):
         """Create new permohonan"""
         try:
@@ -50,7 +51,8 @@ class PermohonanService(BaseService):
         except Exception as e:
             db.session.rollback()
             return None, str(e)
-    
+
+
     def get_permohonan_by_user(self, user_id: str, role: str):
         """Get permohonan by user based on role"""
         if role == 'mahasiswa':
@@ -61,22 +63,25 @@ class PermohonanService(BaseService):
             return self.permohonan_repo.get_all()
         else:
             return []
-    
+
+
     def get_dashboard_stats(self):
         """Get dashboard statistics"""
         return self.permohonan_repo.get_dashboard_stats()
 
     
+
     # DOSEN
     def get_permohonan_dosen(self, dosen_id: str, status: str = None, jenis_id: int = None):
         """Get permohonan untuk halaman dosen"""
         return self.permohonan_repo.get_by_dosen_with_filter(dosen_id, status, jenis_id)
 
+
     def reject_permohonan(self, permohonan_id: int, dosen_id: str, komentar_penolakan: str):
         """Reject permohonan"""
         try:
             permohonan = self.permohonan_repo.get_by_id(permohonan_id)
-            print("tplak",permohonan)
+            
             if not permohonan:
                 return None, "Permohonan not found"
             
@@ -122,14 +127,13 @@ class PermohonanService(BaseService):
                 "ditolak",
                 komentar_penolakan
             )
-            if not status:
-                print("Email send error:", err)
-            
+                       
             return permohonan, None
             
         except Exception as e:
             db.session.rollback()
             return None, str(e)
+
 
     def sign_permohonan(self, permohonan_id: str, dosen_id: str):
         """Sign permohonan (can sign pending or approved)"""
@@ -221,15 +225,13 @@ class PermohonanService(BaseService):
                 "ditandatangani",
                 None
             )
-            if not status:
-                print("Email send error:", err)
-      
             return permohonan, None
             
         except Exception as e:
             db.session.rollback()
             return None, str(e)
         
+
     def batch_sign_permohonan(self, permohonan_ids: list, dosen_id: str):
         """Batch sign multiple permohonan dengan parallel processing untuk PDF dan email"""
         results = {
@@ -317,7 +319,7 @@ class PermohonanService(BaseService):
                 pdf_processing_tasks.append(task_data)
             
             # ===== PARALLEL PROCESSING: QR Generation + PDF Signing =====
-            print(f"🚀 Starting parallel PDF processing for {len(pdf_processing_tasks)} permohonan...")
+            
             
             pdf_processing_data = []
             emails_to_send = {}
@@ -374,13 +376,13 @@ class PermohonanService(BaseService):
                             })
                             
                     except Exception as e:
-                        print(f"❌ Error processing permohonan {task_data['permohonan_id']}: {str(e)}")
+                        
                         results['failed'].append({
                             'id': task_data['permohonan_id'],
                             'reason': str(e)
                         })
             
-            print(f"✅ PDF processing completed: {len(pdf_processing_data)} successful")
+            
             
             # ===== BATCH DATABASE UPDATE =====
             if pdf_processing_data:
@@ -406,11 +408,11 @@ class PermohonanService(BaseService):
                     
                     # Single commit for all changes
                     db.session.commit()
-                    print(f"✅ Database batch update successful: {len(pdf_processing_data)} permohonan")
+                    
                     
                 except Exception as e:
                     db.session.rollback()
-                    print(f"❌ Database commit failed: {str(e)}")
+                    
                     # Mark all as failed
                     for item in pdf_processing_data:
                         # Find and remove from success
@@ -434,16 +436,18 @@ class PermohonanService(BaseService):
                 )
                 thread.daemon = True
                 thread.start()
-                print(f"🚀 Background email sending started for {len(emails_to_send)} recipients")
+                
             
             return results, None
             
         except Exception as e:
             db.session.rollback()
-            print(f"❌ Batch signing failed: {str(e)}")
+            
             import traceback
-            print(traceback.format_exc())
+            
             return None, f"Failed to batch sign permohonan: {str(e)}"
+
+
 
     # Fungsi lainya
     def _add_signature_to_permohonan_pdf(self, permohonan, ttd_path, qr_filename, dosen_nama_lengkap):
@@ -543,19 +547,19 @@ class PermohonanService(BaseService):
                 
                 mahasiswa_email = task_data['mahasiswa_email']
                 
-                print(f"  ✅ PDF processed: {task_data['permohonan_judul']}")
+                
                 return True, pdf_data, mahasiswa_email, None
                 
             except Exception as e:
-                print(f"  ❌ PDF processing error for {task_data['permohonan_id']}: {str(e)}")
+                
                 import traceback
-                print(traceback.format_exc())
+                
                 return False, None, None, str(e)
 
 
     def _send_single_email_with_context(self, app, email: str, nama: str, dosen_name: str, permohonan_list: list):
         """
-        ✅ WRAPPER: Send single email dengan app context untuk ThreadPoolExecutor
+        Send single email dengan app context untuk ThreadPoolExecutor
         """
         with app.app_context():
             from utils.email_utils import send_batch_permohonan_email_sync
@@ -565,20 +569,19 @@ class PermohonanService(BaseService):
     def _send_batch_notifications_parallel(self, app, emails_to_send: dict, dosen_name: str):
         """
         Send batch email notifications in parallel (runs in background thread)
-        ✅ FIXED: Setiap task dibungkus dengan app.app_context() via wrapper
+        Setiap task dibungkus dengan app.app_context() via wrapper
         """
         try:
-            print(f"📧 Starting parallel email sending to {len(emails_to_send)} recipients...")
             
             # Use ThreadPoolExecutor for parallel email sending
             max_workers = min(5, len(emails_to_send))
             
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # ✅ Submit tasks dengan wrapper yang include app context
+                # Submit tasks dengan wrapper yang include app context
                 future_to_email = {
                     executor.submit(
-                        self._send_single_email_with_context,  # ✅ Wrapper function
-                        app,  # ✅ Pass app untuk context
+                        self._send_single_email_with_context,  #  Wrapper function
+                        app,  #  Pass app untuk context
                         email,
                         data['nama'],
                         dosen_name,
@@ -596,21 +599,20 @@ class PermohonanService(BaseService):
                         status, err = future.result()
                         if status:
                             success_count += 1
-                            print(f"  ✅ Email sent to {email}")
+                            
                         else:
                             failed_count += 1
-                            print(f"  ❌ Email failed to {email}: {err}")
+                            
                     except Exception as e:
                         failed_count += 1
-                        print(f"  ❌ Email error to {email}: {str(e)}")
+                        
             
-            print(f"📧 Email sending completed: {success_count} success, {failed_count} failed")
+            
             
         except Exception as e:
-            print(f"❌ Batch email sending error: {str(e)}")
+            
             import traceback
-            print(traceback.format_exc())
-
+            
 
     def _add_signature_to_permohonan_pdf_single(self, permohonan, ttd_path, qr_filename,dosen_id:str):
         """Menambahkan tanda tangan ke PDF permohonan"""
@@ -661,6 +663,8 @@ class PermohonanService(BaseService):
             
         except Exception as e:
             return f"Error processing PDF signature: {str(e)}"
+
+
 
     #belom digunakan
     # def _create_history_record(self, permohonan: Permohonan, action: str, komentar: str = None):

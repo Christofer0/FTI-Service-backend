@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required
 from app.services.history_service import HistoryService
 from schemas.permohonan_schema import PermohonanSchema
 from utils.response_utils import success_response, error_response
-from utils.jwt_utils import role_required, get_current_user
+from utils.jwt_utils import get_current_user
 
 # Blueprint
 history_bp = Blueprint("history", __name__)
@@ -12,46 +12,19 @@ history_bp = Blueprint("history", __name__)
 service_history = HistoryService()
 schema_history = PermohonanSchema(many=True)
 
-
-# @history_bp.route("/<string:status>", methods=["GET"])
-# @jwt_required()
-# @role_required('mahasiswa')
-# def get_history_status(status):
-#     """
-#     Get data permohonan mahasiswa berdasarkan status
-#     Contoh: /api/history/ditandatangani, /api/history/pending
-#     """
-#     try:
-#         current_user = get_current_user()
-#         user_id = current_user.id
-
-#         history = service_history.get_history_by_status(user_id, status)
-#         if not history:
-#             return error_response("No history found", status_code=404)
-
-#         return success_response("History retrieved", schema_history.dump(history))
-
-#     except Exception as e:
-#         print("Error get_history_status:", str(e))
-#         return error_response("Failed to get history", str(e), 500)
-
+def get_current_user_id_and_role_by_jwt_req():
+    current_user = get_current_user()
+    if not current_user:
+        return None, None, None
+    print(current_user, current_user.id, current_user.role)
+    return current_user, current_user.id, current_user.role
 
 @history_bp.route("/<string:status>", methods=["GET"])
 @jwt_required()
 def get_history_status(status):
     try:
-        # ambil user dari JWT, jangan dari parameter
-        current_user = get_current_user()
-        user_id = current_user.id
-        # print("Current User:", current_user.role, current_user.id)
-        role = current_user.role
-        
+        current_user, user_id,role = get_current_user_id_and_role_by_jwt_req()
         history = service_history.get_history_by_status(user_id,role,status)
-        # elif role == "dosen":
-        # elif role == " admin":
-        # print("role admin")
-        # else:
-            # pass
         if not history:
             return error_response("No history found", status_code=404)
 
@@ -62,11 +35,8 @@ def get_history_status(status):
         return error_response("Failed to get history", str(e), 500)
 
 
-
-
 @history_bp.route("/counts", methods=["GET"])
 @jwt_required()
-# @role_required('mahasiswa')
 def get_counts_by_status():
     """
     Get jumlah permohonan mahasiswa berdasarkan status
@@ -78,9 +48,7 @@ def get_counts_by_status():
     }
     """
     try:
-        current_user = get_current_user()
-        user_id = current_user.id
-        role = current_user.role
+        current_user, user_id,role = get_current_user_id_and_role_by_jwt_req()
         counts = service_history.get_counts_by_status(user_id,role)
         if counts is None:
             return error_response("No history found", status_code=404)
@@ -103,9 +71,7 @@ def get_total_history():
     }
     """
     try:
-        current_user = get_current_user()
-        user_id = current_user.id
-        role = current_user.role
+        current_user, user_id ,role = get_current_user_id_and_role_by_jwt_req()
         total = service_history.get_total_permohonan(user_id,role)
         if total is None:
             return error_response("No history found", status_code=404)
@@ -118,11 +84,10 @@ def get_total_history():
     
 @history_bp.route("/all", methods=["GET"])
 @jwt_required()
-# @role_required('mahasiswa')
 def get_all_history():
-    current_user = get_current_user()
-    user_id = current_user.id
-    role = current_user.role
-    all_history = service_history.get_all_history(user_id,role)
-    return success_response("All history retrieved", schema_history.dump(all_history))
-
+    try:
+        current_user, user_id ,role = get_current_user_id_and_role_by_jwt_req()
+        all_history = service_history.get_all_history(user_id,role)
+        return success_response("All history retrieved", schema_history.dump(all_history))
+    except Exception as e:
+        return error_response("Failed to get all", str(e), 500)

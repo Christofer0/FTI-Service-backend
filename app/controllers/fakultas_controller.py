@@ -1,4 +1,3 @@
-# controllers/fakultas_controller.py (Additional controller for master data)
 from flask import Blueprint,jsonify
 from app.services.fakultas_service import FakultasService
 from schemas.fakultas_schema import FakultasSchema, ProgramStudiSchema
@@ -11,7 +10,6 @@ program_studi_schema = ProgramStudiSchema(many=True)
 
 
 @fakultas_bp.route('/', methods=['GET'])
-# @jwt_required()
 def get_fakultas_list():
     """Get list of fakultas"""
     try:

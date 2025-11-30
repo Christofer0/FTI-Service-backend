@@ -8,6 +8,7 @@ class HistoryService:
         self.repo_permohonan = PermohonanRepository()
         self.repo_user = UserRepository()
 
+
     def get_history_by_status(self, user_id: str, role:str,status: str):
         """Get history of permohonan for a mahasiswa by status"""
         if role == "mahasiswa":
@@ -18,11 +19,13 @@ class HistoryService:
             history = self.repo_permohonan.get_by_status(status)
         return history
     
+
     def get_all_permohonan_by_dosen(self,user_id:str):
         """Get history of permohonan for a mahasiswa by status"""
         all_history = self.repo_permohonan.get_all_by_dosen(user_id)
 
         return all_history
+
 
     def get_all_counts_off_permohonan(self):
         """Get counts of ALL permohonan grouped mahasiswa"""
@@ -44,6 +47,7 @@ class HistoryService:
                 counts[status] = 1  # kalau ada status baru
 
         return counts
+
 
     def get_counts_by_status(self, user_id: str,role:str):
         """Get counts of permohonan grouped by status for a mahasiswa"""
@@ -90,6 +94,7 @@ class HistoryService:
         elif role == "admin":
             all_permohonan = self.repo_permohonan.get_all()
         return len(all_permohonan)
+    
     
     def get_all_history(self, user_id: str,role:str):
         """Get all permohonan tanpa filter status"""

@@ -382,35 +382,12 @@ class GoogleOAuthService:
         except Exception as e:
             return None, f"Gagal membuat akun dosen: {str(e)}"
         
-"""
-def create_dosen_from_google(
-    self, 
-    google_data: dict, 
-    nomor_induk: str,
-    no_hp: str, 
-    gelar_depan: str, 
-    gelar_belakang: str, 
-    jabatan: str, 
-    fakultas_id: int,
-    signature_file=None
-) -> tuple:
-    # ... existing code ...
-    
-    try:
-        # Process signature upload if provided
-        ttd_path = None
-        if signature_file:
-            # ✅ OPTION A: Save direct (jika dari editor frontend)
-            from utils.file_utils import save_signature_direct
-            ttd_path, error = save_signature_direct(signature_file)
-            
-            # ✅ OPTION B: Resize (jika upload manual tanpa editor)
-            # from utils.file_utils import save_and_resize_signature
-            # ttd_path, error = save_and_resize_signature(signature_file, target_size=(724, 344))
-            
-            if error:
-                return None, f"Gagal upload tanda tangan: {error}"
+    def refresh_token(self, user_id: str) -> tuple:
+        """Create new access token"""
+        user = self.user_repo.get_by_id(user_id)
+        if not user or not user.is_active:
+            return None, "Invalid user"
         
-        # ... rest of code ...
-"""    
+        access_token = create_access_token(identity=user_id)
+        return {'access_token': access_token}, None
 
