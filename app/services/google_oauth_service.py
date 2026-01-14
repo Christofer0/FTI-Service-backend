@@ -28,7 +28,8 @@ class GoogleOAuthService:
             idinfo = id_token.verify_oauth2_token(
                 token, 
                 google_requests.Request(), 
-                self.google_client_id
+                self.google_client_id,
+                clock_skew_in_seconds=5
             )
             
             # Token is valid, return user info
