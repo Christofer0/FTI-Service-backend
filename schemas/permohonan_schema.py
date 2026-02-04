@@ -35,7 +35,7 @@ class CreatePermohonanSchema(Schema):
     """Schema for creating permohonan"""
     id_jenis_permohonan = fields.Int(required=True)
     id_dosen = fields.Str(required=True)
-    judul = fields.Str(required=True, validate=validate.Length(min=5, max=255))
+    judul = fields.Str(required=True, validate=validate.Length(min=1, max=255))
     deskripsi = fields.Str(allow_none=True)
     file_name = fields.Str(allow_none=True)
 
@@ -52,9 +52,10 @@ class CreateJenisPermohonanSchema(Schema):
     """Schema for creating jenis permohonan"""
     nama_jenis_permohonan = fields.Str(
         required=True, 
-        validate=validate.Length(min=3, max=255)
+        validate=validate.Length(min=1, max=255)
     )
     deskripsi = fields.Str(allow_none=True)
+    route_path = fields.Str(required=True)
     is_active = fields.Boolean(load_default=True)  # default True
 
 
@@ -64,5 +65,6 @@ class UpdateJenisPermohonanSchema(Schema):
         validate=validate.Length(min=3, max=255)
     )
     deskripsi = fields.Str(allow_none=True)
+    route_path = fields.Str()
     is_active = fields.Boolean()
 

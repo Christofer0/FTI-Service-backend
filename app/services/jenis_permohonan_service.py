@@ -35,6 +35,7 @@ class JenisPermohonanService:
             lambda: self.repo.create(
                 nama=data["nama_jenis_permohonan"],
                 deskripsi=data.get("deskripsi"),
+                route_path=data.get("route_path"),
                 is_active=data.get("is_active", True),
             )
         )

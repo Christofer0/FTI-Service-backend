@@ -34,11 +34,12 @@ class JenisPermohonanRepository(BaseRepository):
                 JenisPermohonan.deskripsi.ilike(f"%{keyword}%")
             )).all()
     
-    def create(self, nama: str, deskripsi: str = None, is_active: bool = True) -> JenisPermohonan:
+    def create(self, nama: str, deskripsi: str = None,route_path=str, is_active: bool = True) -> JenisPermohonan:
         """Create new jenis permohonan"""
         new_jenis = JenisPermohonan(
             nama_jenis_permohonan=nama,
             deskripsi=deskripsi,
+            route_path=route_path,
             is_active=is_active
         )
         self.session.add(new_jenis)

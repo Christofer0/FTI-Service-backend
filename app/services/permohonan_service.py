@@ -450,49 +450,102 @@ class PermohonanService(BaseService):
 
 
     # Fungsi lainya
-    def _add_signature_to_permohonan_pdf(self, permohonan, ttd_path, qr_filename, dosen_nama_lengkap):
-        """Menambahkan tanda tangan ke PDF permohonan (optimized - no DB query)"""
+    # def _add_signature_to_permohonan_pdf(self, permohonan, ttd_path, qr_filename, dosen_nama_lengkap):
+    #     """Menambahkan tanda tangan ke PDF permohonan (optimized - no DB query)"""
+    #     try:
+    #         from utils.pdf_utils import add_signature_to_pdf, get_full_file_path
+            
+    #         # Path file asli
+    #         original_pdf_path = get_full_file_path(permohonan.file_path, 'uploads')
+            
+    #         # Path tanda tangan
+    #         signature_path = get_full_file_path(ttd_path, 'uploads')
+            
+    #         # Path QR code
+    #         qr_path = get_full_file_path(qr_filename, 'qr_codes')
+            
+    #         # Generate nama file signed
+    #         original_filename = os.path.basename(permohonan.file_path)
+    #         name_without_ext = os.path.splitext(original_filename)[0]
+    #         signed_filename = f"{name_without_ext}_signed.pdf"
+            
+    #         # Path untuk save
+    #         ttd_folder = current_app.config['DOCUMENT_PERMOHONAN_TTD_PATH']
+    #         signed_absolute_path = os.path.join(ttd_folder, signed_filename)
+            
+    #         # Path relatif untuk database
+    #         relative_ttd_folder = os.path.relpath(ttd_folder, current_app.config['UPLOAD_SIGNED'])
+    #         signed_relative_path = os.path.join(relative_ttd_folder, signed_filename)
+            
+    #         signed_at = datetime.now().strftime("%d/%m/%Y")
+    #         nama_jenis_permohonan = permohonan.jenis_permohonan.nama_jenis_permohonan  # atau field kamu
+            
+    #         # Proses PDF
+    #         success, error = add_signature_to_pdf(
+    #             original_pdf_path,
+    #             signature_path, 
+    #             qr_path,
+    #             signed_absolute_path,
+    #             dosen_nama_lengkap,
+    #             nama_jenis_permohonan,
+    #             signed_at
+    #         )
+            
+    #         if not success:
+    #             return None, f"Failed to add signature to PDF: {error}"
+            
+    #         return signed_relative_path, None
+            
+    #     except Exception as e:
+    #         return None, f"Error processing PDF signature: {str(e)}"
+    def _add_signature_to_permohonan_pdf(
+        self,
+        file_path: str,
+        ttd_path: str,
+        qr_filename: str,
+        dosen_nama_lengkap: str,
+        nama_jenis_permohonan: str
+    ):
         try:
             from utils.pdf_utils import add_signature_to_pdf, get_full_file_path
-            
-            # Path file asli
-            original_pdf_path = get_full_file_path(permohonan.file_path, 'uploads')
-            
-            # Path tanda tangan
+
+            original_pdf_path = get_full_file_path(file_path, 'uploads')
             signature_path = get_full_file_path(ttd_path, 'uploads')
-            
-            # Path QR code
             qr_path = get_full_file_path(qr_filename, 'qr_codes')
-            
-            # Generate nama file signed
-            original_filename = os.path.basename(permohonan.file_path)
+
+            original_filename = os.path.basename(file_path)
             name_without_ext = os.path.splitext(original_filename)[0]
             signed_filename = f"{name_without_ext}_signed.pdf"
-            
-            # Path untuk save
+
             ttd_folder = current_app.config['DOCUMENT_PERMOHONAN_TTD_PATH']
             signed_absolute_path = os.path.join(ttd_folder, signed_filename)
-            
-            # Path relatif untuk database
-            relative_ttd_folder = os.path.relpath(ttd_folder, current_app.config['UPLOAD_SIGNED'])
+
+            relative_ttd_folder = os.path.relpath(
+                ttd_folder,
+                current_app.config['UPLOAD_SIGNED']
+            )
             signed_relative_path = os.path.join(relative_ttd_folder, signed_filename)
-            
-            # Proses PDF
+
+            signed_at = datetime.now().strftime("%d/%m/%Y")
+
             success, error = add_signature_to_pdf(
                 original_pdf_path,
-                signature_path, 
+                signature_path,
                 qr_path,
                 signed_absolute_path,
-                dosen_nama_lengkap
+                dosen_nama_lengkap,
+                nama_jenis_permohonan,
+                signed_at
             )
-            
+
             if not success:
-                return None, f"Failed to add signature to PDF: {error}"
-            
+                return None, error
+
             return signed_relative_path, None
-            
+
         except Exception as e:
-            return None, f"Error processing PDF signature: {str(e)}"
+            return None, str(e)
+
 
     
     def _process_single_pdf_parallel_with_context(self, app, task_data: dict, ttd_path: str, 
@@ -521,19 +574,21 @@ class PermohonanService(BaseService):
                     return False, None, None, f"QR generation failed: {qr_error}"
                 
                 # Create temporary permohonan-like object for PDF processing
-                class TempPermohonan:
-                    def __init__(self, file_path):
-                        self.file_path = file_path
+                # class TempPermohonan:
+                #     def __init__(self, file_path):
+                #         self.file_path = file_path
                 
-                temp_permohonan = TempPermohonan(task_data['file_path'])
+                # temp_permohonan = TempPermohonan(task_data['file_path'])
                 
                 # Add signature to PDF
                 signed_path, pdf_error = self._add_signature_to_permohonan_pdf(
-                    temp_permohonan,
-                    ttd_path,
-                    qr_filename,
-                    dosen_nama_lengkap
+                    file_path=task_data['file_path'],
+                    ttd_path=ttd_path,
+                    qr_filename=qr_filename,
+                    dosen_nama_lengkap=dosen_nama_lengkap,
+                    nama_jenis_permohonan=task_data['jenis_nama']
                 )
+
                 if pdf_error:
                     return False, None, None, pdf_error
                 
@@ -614,6 +669,56 @@ class PermohonanService(BaseService):
             import traceback
             
 
+    # def _add_signature_to_permohonan_pdf_single(self, permohonan, ttd_path, qr_filename,dosen_id:str):
+    #     """Menambahkan tanda tangan ke PDF permohonan"""
+    #     try:
+    #         from utils.pdf_utils import add_signature_to_pdf, get_full_file_path
+            
+    #         # Path file asli
+    #         original_pdf_path = get_full_file_path(permohonan.file_path,'uploads')
+            
+    #         # Path tanda tangan
+    #         signature_path = get_full_file_path(ttd_path,'uploads')
+            
+    #         # Path QR code
+    #         qr_path = get_full_file_path(qr_filename,'qr_codes')
+            
+    #         # Generate nama file signed
+    #         original_filename = os.path.basename(permohonan.file_path)
+    #         name_without_ext = os.path.splitext(original_filename)[0]
+    #         signed_filename = f"{name_without_ext}_signed.pdf"
+            
+    #         # Path untuk save
+    #         ttd_folder = current_app.config['DOCUMENT_PERMOHONAN_TTD_PATH']
+    #         signed_absolute_path = os.path.join(ttd_folder, signed_filename)
+            
+    #         # Path relatif untuk database
+    #         relative_ttd_folder = os.path.relpath(ttd_folder, current_app.config['UPLOAD_SIGNED'])
+    #         signed_relative_path = os.path.join(relative_ttd_folder, signed_filename)
+
+    #         from app.models.dosen_model import Dosen
+    #         dosen = db.session.query(Dosen).filter_by(user_id=dosen_id).first()
+            
+    #         # Proses PDF
+    #         success, error = add_signature_to_pdf(
+    #             original_pdf_path,
+    #             signature_path, 
+    #             qr_path,
+    #             signed_absolute_path,
+    #             dosen.nama_lengkap
+    #         )
+            
+    #         if not success:
+    #             return f"Failed to add signature to PDF: {error}"
+            
+    #         # Update path di database
+    #         permohonan.file_signed_path = signed_relative_path
+            
+    #         return None
+            
+    #     except Exception as e:
+    #         return f"Error processing PDF signature: {str(e)}"
+
     def _add_signature_to_permohonan_pdf_single(self, permohonan, ttd_path, qr_filename,dosen_id:str):
         """Menambahkan tanda tangan ke PDF permohonan"""
         try:
@@ -644,13 +749,18 @@ class PermohonanService(BaseService):
             from app.models.dosen_model import Dosen
             dosen = db.session.query(Dosen).filter_by(user_id=dosen_id).first()
             
+            signed_at = datetime.now().strftime("%d/%m/%Y")
+            nama_jenis_permohonan = permohonan.jenis_permohonan.nama_jenis_permohonan  # atau field kamu
+
             # Proses PDF
             success, error = add_signature_to_pdf(
                 original_pdf_path,
                 signature_path, 
                 qr_path,
                 signed_absolute_path,
-                dosen.nama_lengkap
+                dosen.nama_lengkap,
+                nama_jenis_permohonan,
+                signed_at
             )
             
             if not success:

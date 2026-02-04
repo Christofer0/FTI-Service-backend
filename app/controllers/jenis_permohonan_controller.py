@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, request,g
 from flask_jwt_extended import jwt_required
 from marshmallow import ValidationError
 
@@ -20,6 +20,9 @@ list_schema = JenisPermohonanSchema(many=True)
 create_schema = CreateJenisPermohonanSchema()
 update_schema = UpdateJenisPermohonanSchema()
 
+def get_current_user_by_role_required():
+    current_user = g.current_user
+    return current_user
 
 @jenis_permohonan_bp.route("/", methods=["GET"])
 @jwt_required()
@@ -31,30 +34,79 @@ def get_all():
     except Exception as e:
         return error_response("data retrieved", status_code=404)
 
-'''BELOM DIPAKAI'''
-# @jenis_permohonan_bp.route("/<int:jenis_id>", methods=["GET"])
-# @jwt_required()
-# def get_by_id(jenis_id):
-#     """Get jenis permohonan by ID"""
-#     jenis = service.get_by_id(jenis_id)
-#     if not jenis:
-#         return error_response("Not found", status_code=404)
-#     return success_response("Detail retrieved", schema.dump(jenis))
+
+@jenis_permohonan_bp.route("/<int:jenis_id>", methods=["GET"])
+@jwt_required()
+def get_by_id(jenis_id):
+    """Get jenis permohonan by ID"""
+    jenis = service.get_by_id(jenis_id)
+    if not jenis:
+        return error_response("Not found", status_code=404)
+    return success_response("Detail retrieved", schema.dump(jenis))
 
 
-#BELOM DIPAKAI
-# @jenis_permohonan_bp.route("/", methods=["POST"])
-# @role_required("admin")
-# def create(current_user):
-#     """Create jenis permohonan (admin only)"""
-#     try:
-#         data = create_schema.load(request.json or {})
-#         jenis, error = service.create(data)
-#         if error:
-#             return error_response(error, 400)
-#         return success_response("Created successfully", schema.dump(jenis), 201)
-#     except ValidationError as e:
-#         return error_response("Validation error", e.messages, 400)
+
+@jenis_permohonan_bp.route("/", methods=["POST"])
+@role_required("admin")
+def create():
+    """Create jenis permohonan (admin only)"""
+    try:
+        current_user = get_current_user_by_role_required()  # konsisten, meski belum dipakai
+
+        data = create_schema.load(request.json or {})
+        jenis, error = service.create(data)
+
+        if error:
+            return error_response(error, 400)
+
+        return success_response(
+            "Created successfully",
+            schema.dump(jenis),
+            201
+        )
+
+    except ValidationError as e:
+        return error_response("Jenis Permohonan Gagal Ditambahkan", e.messages, 400)
+
+
+@jenis_permohonan_bp.route("/<int:jenis_id>/activate", methods=["PATCH"])
+@role_required("admin")
+def activate(jenis_id):
+    """Aktifkan jenis permohonan (admin only)"""
+    try:
+        current_user = get_current_user_by_role_required()
+
+        jenis, error = service.update(jenis_id, {"is_active": True})
+        if error:
+            return error_response(error, 400)
+
+        return success_response(
+            "Jenis permohonan activated",
+            schema.dump(jenis)
+        )
+
+    except Exception as e:
+        return error_response("Failed to activate", str(e), 500)
+
+
+@jenis_permohonan_bp.route("/<int:jenis_id>/deactivate", methods=["PATCH"])
+@role_required("admin")
+def deactivate(jenis_id):
+    """Nonaktifkan (soft delete) jenis permohonan (admin only)"""
+    try:
+        current_user = get_current_user_by_role_required()
+
+        jenis, error = service.update(jenis_id, {"is_active": False})
+        if error:
+            return error_response(error, 400)
+
+        return success_response(
+            "Jenis permohonan deactivated",
+            schema.dump(jenis)
+        )
+
+    except Exception as e:
+        return error_response("Failed to deactivate", str(e), 500)
 
 
 # @jenis_permohonan_bp.route("/<int:jenis_id>", methods=["PUT"])
