@@ -21,6 +21,10 @@ class GoogleOAuthService:
         self.prodi_repo = ProgramStudiRepository()
         self.dosen_repo = DosenRepository()
         self.google_client_id = os.getenv('GOOGLE_CLIENT_ID')
+
+    def encript(self,password):
+        return bcrypt.generate_password_hash(password).decode('utf-8')
+    # bcrypt.generate_password_hash(password).decode('utf-8'),
     
     def verify_google_token(self, token: str) -> dict:
         """Verify Google OAuth token and return user info"""
@@ -59,6 +63,7 @@ class GoogleOAuthService:
             # First user is admin
             return 'admin', None, None, None
         
+        
         if not email.endswith('@uksw.edu') and not email.endswith('@student.uksw.edu'):
             return None, None, None, "Email harus menggunakan domain @uksw.edu atau @student.uksw.edu"
         
@@ -83,7 +88,7 @@ class GoogleOAuthService:
             
             return 'mahasiswa', nomor_induk, prodi_id, None
         
-        # Dosen: email format jefry@uksw.edu
+        # Dosen: email format brillian@uksw.edu
         elif '@uksw.edu' in email:
             return 'dosen', None, None, None
         
@@ -188,13 +193,9 @@ class GoogleOAuthService:
             return None, f"Program studi dengan ID {prodi_id} tidak ditemukan"
         
         try:
-            # Create user with dummy password (won't be used for Google login)
-            # from utils.security_utils import hash_password
-            import secrets
             user_data = {
                 'nomor_induk': nomor_induk,
-                'password' : bcrypt.generate_password_hash(password).decode('utf-8'),
-                # 'password': '',
+                'password' : self.encript(password),
                 'nama': name,
                 'email': email,
                 'role': 'mahasiswa',
@@ -232,7 +233,7 @@ class GoogleOAuthService:
         except Exception as e:
             return None, f"Gagal membuat akun: {str(e)}"
         
-    def create_admin_from_google(self, google_data: dict, nomor_induk: str, no_hp: str) -> tuple:
+    def create_admin_from_google(self, google_data: dict, password:str, nomor_induk: str, no_hp: str) -> tuple:
         """
         Create new admin user from Google data
         Returns: (result_dict, error)
@@ -256,14 +257,9 @@ class GoogleOAuthService:
             return None, "Nomor induk sudah digunakan"
         
         try:
-            # Create user with dummy password (won't be used for Google login)
-            # from utils.password_utils import hash_password
-            # import secrets
-            
             user_data = {
                 'nomor_induk': nomor_induk,
-                # 'password': hash_password(secrets.token_urlsafe(32)),  # Random secure password
-                'password':'',
+                'password': self.encript(password),
                 'nama': name,
                 'email': email,
                 'role': 'admin',
@@ -294,6 +290,7 @@ class GoogleOAuthService:
     def create_dosen_from_google(
     self, 
     google_data: dict, 
+    password:str,
     nomor_induk: str,
     no_hp: str, 
     gelar_depan: str, 
@@ -309,7 +306,6 @@ class GoogleOAuthService:
         email = google_data['email']
         name = google_data['name']
         
-        # jangan_lupa_buka
         # Validate email domain
         if not email.endswith('@uksw.edu'):  
             return None, "Email dosen harus menggunakan domain @uksw.edu"
@@ -324,10 +320,7 @@ class GoogleOAuthService:
         if existing_nomor_induk:
             return None, "Nomor induk sudah digunakan"
         
-        try:
-            # from utils.security_utils import hash_password
-            # import secrets
-            
+        try:            
             ttd_path = None
             if signature_file:
                 from utils.file_utils import save_signature_direct
@@ -339,8 +332,7 @@ class GoogleOAuthService:
             # Create user
             user_data = {
                 'nomor_induk': nomor_induk,
-                # 'password': hash_password(secrets.token_urlsafe(32)),  # Random secure password
-                'password':'',
+                'password':self.encript(password),
                 'nama': name,
                 'email': email,
                 'role': 'dosen',

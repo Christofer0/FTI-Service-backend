@@ -194,6 +194,7 @@ def complete_profile_admin():
         result, error = google_oauth_service.create_admin_from_google(
             google_data=google_data,
             nomor_induk=data['nomor_induk'],
+            password=data['password'],
             no_hp=data['no_hp']
         )
         
@@ -255,6 +256,7 @@ def complete_profile_dosen():
         result, error = google_oauth_service.create_dosen_from_google(
             google_data=google_data,
             nomor_induk=data['nomor_induk'],
+            password=data['password'],
             no_hp=data['no_hp'],
             gelar_depan=data.get('gelar_depan'),
             gelar_belakang=data.get('gelar_belakang'),
