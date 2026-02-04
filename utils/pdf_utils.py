@@ -107,6 +107,7 @@ def add_signature_to_pdf(
     qr_path,
     output_path,
     dosen_nama,
+    jabatan_dosen,
     nama_jenis_permohonan,
     signed_at
 ):
@@ -117,6 +118,12 @@ def add_signature_to_pdf(
             return False, f"Signature file not found: {signature_path}"
         if not os.path.exists(qr_path):
             return False, f"QR code file not found: {qr_path}"
+        
+        if nama_jenis_permohonan.lower() == "review":
+            pass
+            #  tambahkan tulisan di bawah jabatan. seperti dibawah ini
+            #  silahkan mengirimkan transkip nilai kembali saat akan
+            #  mendaftar yudisium agar mendapatkan tanda tangan Kaprodi
 
         pdf_reader = PdfReader(pdf_path)
         pdf_writer = PdfWriter()
@@ -136,7 +143,7 @@ def add_signature_to_pdf(
         signature_height = 60
 
         qr_size = 60
-        qr_x = signature_x + signature_width + 20
+        qr_x = signature_x + signature_width + 40
         qr_y = signature_y
 
         text_y = signature_y + signature_height + 10
@@ -148,8 +155,10 @@ def add_signature_to_pdf(
         overlay_canvas.drawString(
             signature_x,
             text_y,
-            f"ACC {nama_jenis_permohonan}  ({signed_at})"
+            f"ACC {nama_jenis_permohonan} ({signed_at})"
         )
+        
+
 
 
         # ================= TTD =================
@@ -173,8 +182,46 @@ def add_signature_to_pdf(
 
         # ================= TEXT BAWAH =================
         overlay_canvas.setFont("Helvetica", 8)
-        overlay_canvas.drawString(signature_x, signature_y - 15, dosen_nama)
-        overlay_canvas.drawString(qr_x, qr_y - 15, "QR Verifikasi")
+
+        name_y = signature_y - 20
+        line_y = name_y - 5
+        jabatan_y = line_y - 10
+
+        # Nama dosen
+        overlay_canvas.drawString(signature_x, name_y, dosen_nama)
+
+        # Garis bawah (pakai line)
+        text_width = overlay_canvas.stringWidth(dosen_nama, "Helvetica", 8)
+        overlay_canvas.line(signature_x, line_y, signature_x + text_width, line_y)
+
+        # Jabatan dosen
+        overlay_canvas.drawString(signature_x, jabatan_y, jabatan_dosen)
+
+        # Khusus REVIEW
+        overlay_canvas.drawString(signature_x, jabatan_y, jabatan_dosen)
+        # ================= CATATAN KHUSUS REVIEW =================
+        if nama_jenis_permohonan.lower() == "review":
+            overlay_canvas.setFont("Helvetica", 7)
+
+            review_notes = [
+                "Silahkan mengirimkan transkip nilai kembali saat akan",
+                "mendaftar yudisium agar mendapatkan tanda tangan Kaprodi"
+            ]
+
+            note_y = jabatan_y - 12
+            for line in review_notes:
+                overlay_canvas.drawString(signature_x, note_y, line)
+                note_y -= 10
+
+        # ================= LABEL QR (CENTER) =================
+        label_text = "Verify"
+        overlay_canvas.setFont("Helvetica", 8)
+
+        text_width = overlay_canvas.stringWidth(label_text, "Helvetica", 8)
+        label_x = qr_x + (qr_size / 2) - (text_width / 2)
+        label_y = qr_y - 15
+
+        overlay_canvas.drawString(label_x, label_y, label_text)
 
         overlay_canvas.save()
         overlay_buffer.seek(0)

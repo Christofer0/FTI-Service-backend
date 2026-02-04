@@ -504,6 +504,7 @@ class PermohonanService(BaseService):
         ttd_path: str,
         qr_filename: str,
         dosen_nama_lengkap: str,
+        jabatan_dosen:str,
         nama_jenis_permohonan: str
     ):
         try:
@@ -534,6 +535,7 @@ class PermohonanService(BaseService):
                 qr_path,
                 signed_absolute_path,
                 dosen_nama_lengkap,
+                jabatan_dosen,
                 nama_jenis_permohonan,
                 signed_at
             )
@@ -573,12 +575,14 @@ class PermohonanService(BaseService):
                 if qr_error:
                     return False, None, None, f"QR generation failed: {qr_error}"
                 
-                # Create temporary permohonan-like object for PDF processing
-                # class TempPermohonan:
-                #     def __init__(self, file_path):
-                #         self.file_path = file_path
-                
-                # temp_permohonan = TempPermohonan(task_data['file_path'])
+                # Ambil jabatan dosen
+                from app.models.dosen_model import Dosen
+
+                dosen = db.session.query(Dosen).filter_by(user_id=dosen_id).first()
+                if not dosen:
+                    return False, None, None, "Dosen tidak ditemukan"
+
+                jabatan_dosen = dosen.jabatan
                 
                 # Add signature to PDF
                 signed_path, pdf_error = self._add_signature_to_permohonan_pdf(
@@ -586,6 +590,7 @@ class PermohonanService(BaseService):
                     ttd_path=ttd_path,
                     qr_filename=qr_filename,
                     dosen_nama_lengkap=dosen_nama_lengkap,
+                    jabatan_dosen=jabatan_dosen,
                     nama_jenis_permohonan=task_data['jenis_nama']
                 )
 
@@ -748,9 +753,9 @@ class PermohonanService(BaseService):
 
             from app.models.dosen_model import Dosen
             dosen = db.session.query(Dosen).filter_by(user_id=dosen_id).first()
-            
+            jabatan_dosen = dosen.jabatan
             signed_at = datetime.now().strftime("%d/%m/%Y")
-            nama_jenis_permohonan = permohonan.jenis_permohonan.nama_jenis_permohonan  # atau field kamu
+            nama_jenis_permohonan = permohonan.jenis_permohonan.nama_jenis_permohonan  
 
             # Proses PDF
             success, error = add_signature_to_pdf(
@@ -759,6 +764,7 @@ class PermohonanService(BaseService):
                 qr_path,
                 signed_absolute_path,
                 dosen.nama_lengkap,
+                jabatan_dosen,
                 nama_jenis_permohonan,
                 signed_at
             )
