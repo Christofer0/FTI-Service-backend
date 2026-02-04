@@ -140,6 +140,7 @@ def complete_profile_mahasiswa():
         # Create mahasiswa user
         result, error = google_oauth_service.create_mahasiswa_from_google(
             google_data=google_data,
+            password=data['password'],
             semester=data['semester'],
             no_hp=data['no_hp']
         )

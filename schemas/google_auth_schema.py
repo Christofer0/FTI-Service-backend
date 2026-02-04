@@ -12,12 +12,14 @@ class CompleteProfileMahasiswaSchema(Schema):
     token = fields.Str(required=True)  # Google token
     semester = fields.Int(required=True, validate=lambda x: 1 <= x <= 14)
     no_hp = fields.Str(required=True)
+    password = fields.Str(required=True)
 
 class CompleteProfileAdminSchema(Schema):
     """Schema for completing admin profile"""
     token = fields.Str(required=True)
     nomor_induk = fields.Str(required=True)
     no_hp = fields.Str(required=True)
+    password = fields.Str(required=True)
 
 
 class CompleteProfileDosenSchema(Schema):
@@ -25,6 +27,7 @@ class CompleteProfileDosenSchema(Schema):
     token = fields.Str(required=True)
     nomor_induk = fields.Str(required=True)
     no_hp = fields.Str(required=True)
+    password = fields.Str(required=True)
     gelar_depan = fields.Str(required=False, allow_none=True)
     gelar_belakang = fields.Str(required=False, allow_none=True)
     jabatan = fields.Str(required=False, allow_none=True)

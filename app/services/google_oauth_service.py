@@ -9,6 +9,7 @@ from app.repositories.mahasiswa_repository import MahasiswaRepository
 from app.repositories.dosen_repository import DosenRepository
 from app.repositories.fakultas_repository import ProgramStudiRepository
 from app.models.user_model import User
+from extensions import bcrypt
 
 
 class GoogleOAuthService:
@@ -165,7 +166,7 @@ class GoogleOAuthService:
             None, "Who Are You ? "
 
     
-    def create_mahasiswa_from_google(self, google_data: dict, semester: int, no_hp: str) -> tuple:
+    def create_mahasiswa_from_google(self, google_data: dict,password:str, semester: int, no_hp: str) -> tuple:
         """
         Create new mahasiswa user from Google data
         Returns: (result_dict, error)
@@ -190,11 +191,10 @@ class GoogleOAuthService:
             # Create user with dummy password (won't be used for Google login)
             # from utils.security_utils import hash_password
             import secrets
-            
             user_data = {
                 'nomor_induk': nomor_induk,
-                # 'password': hash_password(secrets.token_urlsafe(32)),  # Random secure password
-                'password': '',
+                'password' : bcrypt.generate_password_hash(password).decode('utf-8'),
+                # 'password': '',
                 'nama': name,
                 'email': email,
                 'role': 'mahasiswa',
