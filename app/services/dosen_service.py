@@ -38,6 +38,7 @@ class DosenService:
                         os.remove(old_file_path)
                     except Exception as e:
                         print(f"Failed to delete old signature: {e}")
+                        pass
 
             # Update path baru
             dosen.ttd_path = signature_path

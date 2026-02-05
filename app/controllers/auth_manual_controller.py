@@ -12,6 +12,7 @@ from schemas.auth_manual_schema import (
 )
 from schemas.user_schema import UserSchema
 from utils.response_utils import success_response, error_response
+from schemas.otp_schema import VerifyOTPSchema,ResendOTPSchema
 
 auth_manual_bp = Blueprint('auth_manual', __name__)
 auth_manual_service = AuthManualService()
@@ -23,6 +24,9 @@ complete_profile_admin_schema = CompleteProfileAdminManualSchema()
 complete_profile_dosen_schema = CompleteProfileDosenManualSchema()
 login_schema = LoginManualSchema()
 user_schema = UserSchema()
+verify_otp_schema = VerifyOTPSchema()
+resend_otp_schema = ResendOTPSchema()
+
 
 
 @auth_manual_bp.route('/register/check-email', methods=['POST'])
@@ -57,7 +61,8 @@ def check_email():
                     'nomor_induk': result.get('nomor_induk'),
                     'prodi_id': result.get('prodi_id'),
                     'fakultas_id': result.get('fakultas_id'),
-                    'email': email
+                    'email': email,
+                    'otp_sent':True
                 },
                 status_code=200
             )
@@ -68,7 +73,8 @@ def check_email():
                 {
                     'needs_profile': True,
                     'role': role,
-                    'email': email
+                    'email': email,
+                    'otp_sent':True
                 },
                 status_code=200
             )
@@ -80,7 +86,8 @@ def check_email():
                     'needs_profile': True,
                     'role': role,
                     'email': email,
-                    'nomor_induk': result.get('nomor_induk')  # if pre-filled from dosen_allowed
+                    'nomor_induk': result.get('nomor_induk'),  # if pre-filled from dosen_allowed
+                    'otp_sent':True
                 },
                 status_code=200
             )
@@ -89,6 +96,92 @@ def check_email():
         return error_response("Validation error", e.messages, 400)
     except Exception as e:
         return error_response("Gagal memeriksa email", str(e), 500)
+    
+@auth_manual_bp.route('/register/verify-otp', methods=['POST'])
+def verify_otp():
+    """
+    Verify OTP code
+    Request body: {
+        "email": "712021001@student.uksw.edu",
+        "otp_code": "123456"
+    }
+    
+    Response:
+    - 200: OTP verified, return registration data
+    - 400: Invalid OTP or expired
+    """
+    try:
+        # Validate request
+        data = verify_otp_schema.load(request.json)
+        email = data['email']
+        otp_code = data['otp_code']
+        
+        # Verify OTP
+        registration_data, error = auth_manual_service.verify_otp(email, otp_code)
+        
+        if error:
+            return error_response(error, status_code=400)
+        
+        role = registration_data.get('role')
+        
+        # Return full registration data after successful verification
+        response_data = {
+            'otp_verified': True,
+            'needs_profile': True,
+            'role': role,
+            'email': email
+        }
+        
+        # Add role-specific data
+        if role == 'mahasiswa':
+            response_data['nomor_induk'] = registration_data.get('nomor_induk')
+            response_data['prodi_id'] = registration_data.get('prodi_id')
+            response_data['fakultas_id'] = registration_data.get('fakultas_id')
+        
+        return success_response(
+            "OTP terverifikasi. Silakan lengkapi profil Anda.",
+            response_data,
+            status_code=200
+        )
+        
+    except ValidationError as e:
+        return error_response("Validation error", e.messages, 400)
+    except Exception as e:
+        return error_response("Gagal memverifikasi OTP", str(e), 500)
+
+
+@auth_manual_bp.route('/register/resend-otp', methods=['POST'])
+def resend_otp():
+    """
+    Resend OTP to email
+    Request body: { "email": "712021001@student.uksw.edu" }
+    
+    Response:
+    - 200: OTP resent successfully
+    - 400: No pending registration or error
+    """
+    try:
+        # Validate request
+        data = resend_otp_schema.load(request.json)
+        email = data['email']
+        
+        # Resend OTP
+        result, error = auth_manual_service.resend_otp(email)
+        
+        if error:
+            return error_response(error, status_code=400)
+        
+        return success_response(
+            "Kode OTP baru telah dikirim ke email Anda.",
+            result,
+            status_code=200
+        )
+        
+    except ValidationError as e:
+        return error_response("Validation error", e.messages, 400)
+    except Exception as e:
+        return error_response("Gagal mengirim ulang OTP", str(e), 500)
+
 
 
 @auth_manual_bp.route('/register/complete-profile/mahasiswa', methods=['POST'])

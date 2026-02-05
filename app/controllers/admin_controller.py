@@ -25,7 +25,6 @@ def get_all_users():
     """Get all users (admin only)"""
     try:        
         users, _ = service_user.get_all()  # unpack tuple
-        print(type(users), "ini get_all users")
 
         # ubah ke list of dicts
         users_list = [user.to_dict() for user in users]
@@ -99,7 +98,6 @@ def get_all_permohonan(status):
     """
     try:
         current_user , role = get_current_user_and_role_by_role_req()
-        print(current_user,role)
         # Ambil semua data dari repo
         role = current_user.role
         permohonan_list = service_history.get_history_by_status(current_user,role, status)
@@ -113,6 +111,5 @@ def get_all_permohonan(status):
         return success_response("All permohonan retrieved", data)
 
     except Exception as e:
-        print("Error get_all_permohonan:", str(e))
         return error_response("Failed to retrieve data", str(e), 500)
     
